@@ -86,7 +86,7 @@ export async function POST(request: NextRequest) {
       console.log('[Chat API] Question failed validation:', validation.reason);
       
       // Return off-topic response
-      const offTopicResponse = createOffTopicResponse(validation.reason);
+      const offTopicResponse = await createOffTopicResponse(validation.reason);
       return NextResponse.json({
         answer: offTopicResponse.answer,
         details: offTopicResponse.details,

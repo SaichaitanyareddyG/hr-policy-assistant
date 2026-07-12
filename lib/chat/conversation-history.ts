@@ -67,8 +67,9 @@ export async function getConversationHistory(
  * 
  * @param messages - Array of chat messages
  * @returns Formatted string for inclusion in prompt
+ * Internal function - not exported
  */
-export function formatConversationHistory(messages: ChatMessage[]): string {
+function formatConversationHistory(messages: ChatMessage[]): string {
   if (messages.length === 0) {
     return 'This is the first message in this conversation.';
   }
@@ -88,7 +89,8 @@ export function formatConversationHistory(messages: ChatMessage[]): string {
  * 
  * @param sessionId - The chat session ID
  * @returns Whether to include conversation history
+ * Internal function - not exported
  */
-export function shouldIncludeHistory(sessionId: string | undefined): boolean {
+function shouldIncludeHistory(sessionId: string | undefined): boolean {
   return !!sessionId;
 }

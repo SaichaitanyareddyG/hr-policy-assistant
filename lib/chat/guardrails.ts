@@ -112,7 +112,7 @@ Respond with ONLY the JSON object, no other text.`;
 /**
  * Create off-topic response
  */
-export function createOffTopicResponse(reason?: string) {
+export async function createOffTopicResponse(reason?: string) {
   return {
     answer: 'I can only answer questions about HR policies and workplace guidelines.',
     details: reason || 
