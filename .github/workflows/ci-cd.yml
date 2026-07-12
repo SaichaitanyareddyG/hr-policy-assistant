@@ -169,6 +169,31 @@ jobs:
           name: playwright-report-node-${{ matrix.node-version }}
           path: playwright-report/
           retention-days: 30
+      
+      - name: Add test results to summary
+        if: always()
+        run: |
+          echo "## 🧪 E2E Test Results - Node ${{ matrix.node-version }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ -f "playwright-report/index.html" ]; then
+            echo "### 📊 Test Report Available" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Download the \`playwright-report-node-${{ matrix.node-version }}\` artifact below and open \`index.html\` to view detailed results." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "### 📦 Available Artifacts:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Test Results**: \`test-results-node-${{ matrix.node-version }}\` (7 days)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Playwright Report**: \`playwright-report-node-${{ matrix.node-version }}\` (30 days)" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ job.status }}" == "failure" ]; then
+            echo "- **Test Videos**: \`test-videos-node-${{ matrix.node-version }}\` (7 days)" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "💡 **Tip**: Scroll to the bottom of this page to download artifacts." >> $GITHUB_STEP_SUMMARY
 
   # Job 4: Deploy to Vercel (ONLY after ALL jobs succeed)
   deploy:
