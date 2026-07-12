@@ -5,6 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:test": "npm run build && npm run test:e2e",
+    "postbuild": "echo '\n✅ Build complete! Run tests with: npm run test:e2e\n'",
     "start": "next start",
     "lint": "next lint",
     "test:e2e": "playwright test",
