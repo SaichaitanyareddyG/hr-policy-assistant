@@ -9,6 +9,7 @@ import { Loader2 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 
 // Lazy load heavy upload form component
+// Dynamic import provides code splitting without blocking initial page load
 const DocumentUploadForm = dynamic(
   () => import('@/components/documents/DocumentUploadForm').then(mod => ({ default: mod.DocumentUploadForm })),
   {
@@ -24,7 +25,6 @@ const DocumentUploadForm = dynamic(
         </CardContent>
       </Card>
     ),
-    ssr: false,
   }
 );
 

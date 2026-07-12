@@ -13,6 +13,7 @@ import dynamic from 'next/dynamic';
 import { Loader2 } from 'lucide-react';
 
 // Lazy load PolicyChat - heavy component with lots of dependencies
+// Dynamic import provides code splitting without blocking initial page load
 const PolicyChat = dynamic(
   () => import('@/components/chat/PolicyChat').then(mod => ({ default: mod.PolicyChat })),
   {
@@ -24,7 +25,6 @@ const PolicyChat = dynamic(
         </div>
       </div>
     ),
-    ssr: false, // Client-side only for better performance
   }
 );
 
