@@ -20,7 +20,15 @@
     "test:features": "playwright test features/",
     "test:coverage": "playwright test --reporter=html,json,junit && playwright show-report",
     "test:demo": "RECORD_VIDEO=true playwright test features/auth.feature.spec.ts --project=chromium --reporter=list",
-    "test:demo:all": "RECORD_VIDEO=true playwright test features/ --project=chromium --reporter=html,list"
+    "test:demo:all": "RECORD_VIDEO=true playwright test features/ --project=chromium --reporter=html,list",
+    "db:login": "supabase login",
+    "db:link": "supabase link --project-ref grjityzozhqdowsgawyf",
+    "db:status": "supabase migration list",
+    "db:new": "supabase migration new",
+    "db:push": "supabase db push",
+    "db:pull": "supabase db pull",
+    "db:diff": "supabase db diff",
+    "db:reset": "supabase db reset"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
@@ -54,6 +62,7 @@
     "autoprefixer": "^10.0.1",
     "dotenv": "^17.4.2",
     "postcss": "^8",
+    "supabase": "^2.109.1",
     "tailwindcss": "^3.4.1",
     "typescript": "^5"
   }
