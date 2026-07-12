@@ -58,11 +58,20 @@ export async function embedChunk(
       };
     }
 
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('role, org_id')
       .eq('id', user.id)
-      .single() as { data: { role: UserRole; org_id: string } | null };
+      .single<{ role: UserRole; org_id: string }>();
+
+    if (profileError) {
+      console.error('[embedChunk] Profile fetch error:', profileError);
+      return {
+        success: false,
+        chunkId,
+        error: 'Failed to fetch user profile',
+      };
+    }
 
     if (!profile || (profile.role !== 'ORG_ADMIN' && profile.role !== 'DEPARTMENT_ADMIN')) {
       return {
@@ -77,9 +86,18 @@ export async function embedChunk(
       .from('policy_document_chunks')
       .select('id, content, section_title, embedding, org_id')
       .eq('id', chunkId)
-      .single() as { data: any; error: any };
+      .single<{ id: string; content: string; section_title: string | null; embedding: any; org_id: string }>();
 
-    if (fetchError || !chunk) {
+    if (fetchError) {
+      console.error('[embedChunk] Chunk fetch error:', fetchError);
+      return {
+        success: false,
+        chunkId,
+        error: 'Failed to fetch chunk',
+      };
+    }
+
+    if (!chunk) {
       return {
         success: false,
         chunkId,
@@ -176,11 +194,22 @@ export async function embedDocumentChunks(
       };
     }
 
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('role, org_id')
       .eq('id', user.id)
-      .single() as { data: { role: UserRole; org_id: string } | null };
+      .single<{ role: UserRole; org_id: string }>();
+
+    if (profileError) {
+      console.error('[embedDocumentChunks] Profile fetch error:', profileError);
+      return {
+        success: false,
+        totalChunks: 0,
+        embeddedChunks: 0,
+        skippedChunks: 0,
+        errors: ['Failed to fetch user profile'],
+      };
+    }
 
     if (!profile || (profile.role !== 'ORG_ADMIN' && profile.role !== 'DEPARTMENT_ADMIN')) {
       return {
@@ -193,11 +222,22 @@ export async function embedDocumentChunks(
     }
 
     // 2. Verify document belongs to admin's org
-    const { data: document } = await supabase
+    const { data: document, error: documentError } = await supabase
       .from('policy_documents')
       .select('id, org_id, title')
       .eq('id', documentId)
-      .single() as { data: any };
+      .single<{ id: string; org_id: string; title: string }>();
+
+    if (documentError) {
+      console.error('[embedDocumentChunks] Document fetch error:', documentError);
+      return {
+        success: false,
+        totalChunks: 0,
+        embeddedChunks: 0,
+        skippedChunks: 0,
+        errors: ['Failed to fetch document'],
+      };
+    }
 
     if (!document || document.org_id !== profile.org_id) {
       return {
@@ -344,11 +384,22 @@ export async function embedMissingChunksForOrg(orgId: string): Promise<EmbedDocu
       };
     }
 
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('role, org_id')
       .eq('id', user.id)
-      .single() as { data: { role: UserRole; org_id: string } | null };
+      .single<{ role: UserRole; org_id: string }>();
+
+    if (profileError) {
+      console.error('[embedMissingChunksForOrg] Profile fetch error:', profileError);
+      return {
+        success: false,
+        totalChunks: 0,
+        embeddedChunks: 0,
+        skippedChunks: 0,
+        errors: ['Failed to fetch user profile'],
+      };
+    }
 
     if (!profile || (profile.role !== 'ORG_ADMIN' && profile.role !== 'DEPARTMENT_ADMIN') || profile.org_id !== orgId) {
       return {

@@ -60,11 +60,21 @@ export async function processPolicyDocument(
     }
 
     // Get user profile
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('role, org_id')
       .eq('id', user.id)
-      .single() as { data: Pick<ProfileData, 'role' | 'org_id'> | null; error: any };
+      .single<Pick<ProfileData, 'role' | 'org_id'>>();
+
+    if (profileError) {
+      console.error('[Process Document] Profile fetch error:', profileError);
+      return {
+        success: false,
+        status: 'FAILED',
+        message: 'Failed to fetch user profile',
+        error: profileError.message,
+      };
+    }
 
     if (!profile || (profile.role !== 'ORG_ADMIN' && profile.role !== 'DEPARTMENT_ADMIN')) {
       return {
@@ -76,12 +86,22 @@ export async function processPolicyDocument(
     }
 
     // Get document and verify ownership
-    const { data: document } = await supabase
+    const { data: document, error: documentError } = await supabase
       .from('policy_documents')
       .select('id, org_id, file_path, title')
       .eq('id', documentId)
       .eq('org_id', profile.org_id!)
-      .single() as { data: Pick<PolicyDocumentData, 'id' | 'org_id' | 'file_path' | 'title'> | null; error: any };
+      .single<Pick<PolicyDocumentData, 'id' | 'org_id' | 'file_path' | 'title'>>();
+
+    if (documentError) {
+      console.error('[Process Document] Document fetch error:', documentError);
+      return {
+        success: false,
+        status: 'FAILED',
+        message: 'Failed to fetch document',
+        error: documentError.message,
+      };
+    }
 
     if (!document) {
       return {

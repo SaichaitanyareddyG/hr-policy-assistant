@@ -34,11 +34,16 @@ export async function createPolicyDocument(
 
     console.log('[createPolicyDocument] User authenticated:', user.id);
 
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', user.id)
-      .single() as { data: ProfileData | null; error: any };
+      .single<ProfileData>();
+
+    if (profileError) {
+      console.error('[createPolicyDocument] Profile fetch error:', profileError);
+      return { success: false, error: 'Failed to fetch user profile' };
+    }
 
     if (!profile || (profile.role !== 'ORG_ADMIN' && profile.role !== 'DEPARTMENT_ADMIN')) {
       console.log('[createPolicyDocument] Unauthorized role:', profile?.role);
@@ -187,11 +192,16 @@ export async function updatePolicyDocument(
       return { success: false, error: 'Unauthorized' };
     }
 
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', user.id)
-      .single() as { data: ProfileData | null; error: any };
+      .single<ProfileData>();
+
+    if (profileError) {
+      console.error('[updatePolicyDocument] Profile fetch error:', profileError);
+      return { success: false, error: 'Failed to fetch user profile' };
+    }
 
     if (!profile || (profile.role !== 'ORG_ADMIN' && profile.role !== 'DEPARTMENT_ADMIN')) {
       return { success: false, error: 'Unauthorized: Admin access required' };
@@ -268,26 +278,33 @@ export async function deletePolicyDocument(
       return { success: false, error: 'Unauthorized' };
     }
 
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', user.id)
-      .single() as { data: ProfileData | null; error: any };
+      .single<ProfileData>();
 
-    // @ts-ignore - Supabase generated types don't match
+    if (profileError) {
+      console.error('[deletePolicyDocument] Profile fetch error:', profileError);
+      return { success: false, error: 'Failed to fetch user profile' };
+    }
+
     if (!profile || (profile.role !== 'ORG_ADMIN' && profile.role !== 'DEPARTMENT_ADMIN')) {
       return { success: false, error: 'Unauthorized: Admin access required' };
     }
 
     // Get document to get file path
-    // @ts-ignore - Supabase generated types
-    const { data: document } = (await supabase
+    const { data: document, error: documentError } = await supabase
       .from('policy_documents')
       .select('file_path')
       .eq('id', documentId)
-      // @ts-ignore
       .eq('org_id', profile.org_id!)
-      .single()) as any;
+      .single<Pick<PolicyDocumentData, 'file_path'>>();
+
+    if (documentError) {
+      console.error('[deletePolicyDocument] Document fetch error:', documentError);
+      return { success: false, error: 'Failed to fetch document' };
+    }
 
     if (!document) {
       return { success: false, error: 'Document not found' };
