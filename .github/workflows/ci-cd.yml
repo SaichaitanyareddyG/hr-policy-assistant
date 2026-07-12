@@ -1,4 +1,5 @@
-# GitHub Actions CI/CD with E2E Testing
+# Production CI/CD Pipeline with Best Practices
+# Follows industry standards: separated jobs, parallel execution, fail-fast
 
 name: CI/CD Pipeline
 
@@ -8,12 +9,77 @@ on:
   pull_request:
     branches: [ main ]
 
+# Cancel in-progress runs for the same workflow
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '20.x'
+  
 jobs:
-  # Build and Test Job
-  build-and-test:
+  # Job 1: Code Quality (Lint)
+  lint:
+    name: Code Quality Check
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run linter
+        run: npm run lint
+
+  # Job 2: Build Application
+  build:
+    name: Build Application
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Build Next.js app
+        run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          NEXT_PUBLIC_APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
+      
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-output
+          path: .next/
+          retention-days: 1
+
+  # Job 3: E2E Tests (Matrix strategy for multiple Node versions)
+  test-e2e:
+    name: E2E Tests (Node ${{ matrix.node-version }})
     runs-on: ubuntu-latest
     
     strategy:
+      fail-fast: false  # Continue testing other versions even if one fails
       matrix:
         node-version: [18.x, 20.x]
     
@@ -33,18 +99,6 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
       
-      - name: Run linter
-        run: npm run lint
-      
-      - name: Build Next.js app
-        run: npm run build
-        env:
-          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          NEXT_PUBLIC_APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
-      
       - name: Start dev server (background)
         run: npm run dev &
         env:
@@ -53,8 +107,8 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       
-      - name: Wait for server
-        run: npx wait-on http://localhost:3000
+      - name: Wait for server to be ready
+        run: npx wait-on http://localhost:3000 --timeout 60000
       
       - name: Run E2E tests
         run: npm run test:e2e
@@ -71,7 +125,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results-${{ matrix.node-version }}
+          name: test-results-node-${{ matrix.node-version }}
           path: test-results/
           retention-days: 7
       
@@ -79,21 +133,22 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: test-videos-${{ matrix.node-version }}
+          name: test-videos-node-${{ matrix.node-version }}
           path: test-results/**/video.webm
           retention-days: 7
       
-      - name: Publish test report
+      - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report-${{ matrix.node-version }}
-          path: test-results/html-report/
+          name: playwright-report-node-${{ matrix.node-version }}
+          path: playwright-report/
           retention-days: 30
 
-  # Deploy to Vercel (only on main branch)
+  # Job 4: Deploy to Vercel (ONLY after ALL jobs succeed)
   deploy:
-    needs: build-and-test
+    name: Deploy to Production
+    needs: [lint, build, test-e2e]  # Waits for ALL jobs to complete successfully
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     
@@ -101,53 +156,49 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
       
-      - name: Deploy to Vercel
+      - name: Deploy to Vercel Production
         uses: amondnet/vercel-action@v20
         with:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
           vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
           vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
           vercel-args: '--prod'
+      
+      - name: Deployment summary
+        if: success()
+        run: |
+          echo "🚀 Deployment successful!"
+          echo "All tests passed and application deployed to production."
 
-  # Optional: Run tests on schedule (nightly)
-  scheduled-tests:
-    runs-on: ubuntu-latest
-    if: github.event_name == 'schedule'
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20.x
-      
-      - name: Install dependencies
-        run: npm ci
-      
-      - name: Install Playwright
-        run: npx playwright install --with-deps chromium
-      
-      - name: Start dev server
-        run: npm run dev &
-      
-      - name: Wait for server
-        run: npx wait-on http://localhost:3000
-      
-      - name: Run all tests with video recording
-        run: RECORD_VIDEO=true npm run test:e2e
-        env:
-          BASE_URL: http://localhost:3000
-          TEST_ADMIN_EMAIL: ${{ secrets.TEST_ADMIN_EMAIL }}
-          TEST_ADMIN_PASSWORD: ${{ secrets.TEST_ADMIN_PASSWORD }}
-          TEST_EMPLOYEE_EMAIL: ${{ secrets.TEST_EMPLOYEE_EMAIL }}
-          TEST_EMPLOYEE_PASSWORD: ${{ secrets.TEST_EMPLOYEE_PASSWORD }}
-      
-      - name: Upload videos
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: nightly-test-videos
-          path: test-results/**/video.webm
-          retention-days: 7
+# ============================================================================
+# CI/CD Pipeline Architecture:
+# ============================================================================
+# 
+# ┌─────────────┐
+# │   PR/Push   │
+# └──────┬──────┘
+#        │
+#        ├─────────┬──────────┬──────────┐
+#        ▼         ▼          ▼          ▼
+#    ┌──────┐ ┌───────┐ ┌────────┐ ┌────────┐
+#    │ Lint │ │ Build │ │ Test   │ │ Test   │
+#    │      │ │       │ │ (N18)  │ │ (N20)  │
+#    └───┬──┘ └───┬───┘ └────┬───┘ └────┬───┘
+#        │        │          │          │
+#        └────────┴──────────┴──────────┘
+#                      │
+#             ALL MUST PASS ✓
+#                      │
+#                      ▼
+#                ┌──────────┐
+#                │  Deploy  │ (main branch only)
+#                └──────────┘
+#
+# Benefits:
+# - Parallel execution (faster CI/CD)
+# - Deploy only after ALL checks pass
+# - No broken code reaches production
+# - Clear separation of concerns
+# - Easy to debug (isolated jobs)
+#
+# ============================================================================
