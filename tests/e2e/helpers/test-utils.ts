@@ -2,16 +2,16 @@ import { Page, expect } from '@playwright/test';
 
 /**
  * Test user credentials
- * IMPORTANT: Update these with your actual test account credentials
+ * Loaded from .env.test file (not committed to git)
  */
 export const TEST_USERS = {
   admin: {
-    email: 'admin@test.com',
-    password: 'Test123!@#',
+    email: process.env.TEST_ADMIN_EMAIL || 'test.admin@policyai.test',
+    password: process.env.TEST_ADMIN_PASSWORD || 'TestAdmin123!@#Secure',
   },
   employee: {
-    email: 'employee@test.com', 
-    password: 'Test123!@#',
+    email: process.env.TEST_EMPLOYEE_EMAIL || 'test.employee@policyai.test', 
+    password: process.env.TEST_EMPLOYEE_PASSWORD || 'TestEmployee123!@#Secure',
   },
 };
 
