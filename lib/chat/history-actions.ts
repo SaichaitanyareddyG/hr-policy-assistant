@@ -1,0 +1,143 @@
+/**
+ * Chat History Actions
+ * 
+ * Fetch and manage chat session history
+ */
+
+'use server';
+
+import { createClient } from '@/lib/supabase/server';
+
+export interface ChatHistoryMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  createdAt: string;
+  sources?: Array<{
+    documentTitle: string;
+    sectionTitle?: string | null;
+    pageNumber?: number | null;
+  }>;
+}
+
+export interface ChatSession {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  messages: ChatHistoryMessage[];
+}
+
+/**
+ * Get the most recent chat session for the current user
+ */
+export async function getLatestChatSession(): Promise<ChatSession | null> {
+  try {
+    const supabase = await createClient();
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return null;
+    }
+
+    // Get user's most recent session
+    const { data: session } = await supabase
+      .from('chat_sessions')
+      .select('id, title, created_at, updated_at')
+      .eq('user_id', user.id)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (!session) {
+      return null;
+    }
+
+    const s = session as any;
+    // Get messages for this session
+    const { data: messages } = await supabase
+      .from('chat_messages')
+      .select('id, role, content, created_at, sources')
+      .eq('session_id', s.id)
+      .order('created_at', { ascending: true });
+
+    return {
+      id: s.id,
+      title: s.title,
+      createdAt: s.created_at,
+      updatedAt: s.updated_at,
+      messages: (messages || []).map((msg: any) => ({
+        id: msg.id,
+        role: msg.role,
+        content: msg.content,
+        createdAt: msg.created_at,
+        sources: msg.sources || [],
+      })),
+    };
+  } catch (error) {
+    console.error('[Chat History] Error fetching latest session:', error);
+    return null;
+  }
+}
+
+/**
+ * Get all chat sessions for the current user
+ */
+export async function getAllChatSessions(): Promise<ChatSession[]> {
+  try {
+    const supabase = await createClient();
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return [];
+    }
+
+    // Get all user sessions
+    const { data: sessions } = await supabase
+      .from('chat_sessions')
+      .select('id, title, created_at, updated_at')
+      .eq('user_id', user.id)
+      .order('updated_at', { ascending: false })
+      .limit(20); // Limit to 20 most recent
+
+    if (!sessions || sessions.length === 0) {
+      return [];
+    }
+
+    // Get messages for each session
+    const sessionsWithMessages = await Promise.all(
+      sessions.map(async (session: any) => {
+        const { data: messages } = await supabase
+          .from('chat_messages')
+          .select('id, role, content, created_at, sources')
+          .eq('session_id', session.id)
+          .order('created_at', { ascending: true });
+
+        return {
+          id: session.id,
+          title: session.title,
+          createdAt: session.created_at,
+          updatedAt: session.updated_at,
+          messages: (messages || []).map((msg: any) => ({
+            id: msg.id,
+            role: msg.role,
+            content: msg.content,
+            createdAt: msg.created_at,
+            sources: msg.sources || [],
+          })),
+        };
+      })
+    );
+
+    return sessionsWithMessages;
+  } catch (error) {
+    console.error('[Chat History] Error fetching all sessions:', error);
+    return [];
+  }
+}

@@ -1,0 +1,426 @@
+/**
+ * Permission Helpers - Step 8 Security Hardening
+ * 
+ * Centralized authorization and permission checking functions.
+ * Used by all API routes, server actions, and data access functions.
+ * 
+ * SECURITY: All functions in this file are server-side only.
+ */
+
+import { createClient } from '@/lib/supabase/server';
+import type { SupabaseClient } from '@supabase/supabase-js';
+
+// =====================================================
+// TYPE DEFINITIONS
+// =====================================================
+
+export interface UserProfile {
+  id: string;
+  orgId: string;
+  role: 'ORG_ADMIN' | 'DEPARTMENT_ADMIN' | 'EMPLOYEE';
+  fullName: string;
+  email: string;
+  department: string | null;
+  location: string | null;
+  employmentType: string | null;
+  departmentScope?: string | null;
+}
+
+export interface PolicyDocument {
+  id: string;
+  orgId: string;
+  title: string;
+  status: string;
+  processingStatus: string;
+  audienceType: 'ALL' | 'CUSTOM';
+  allowedDepartments: string[] | null;
+  allowedLocations: string[] | null;
+  allowedEmploymentTypes: string[] | null;
+}
+
+export interface PolicyChunk {
+  id: string;
+  orgId: string;
+  documentId: string;
+  content: string;
+}
+
+// =====================================================
+// CORE AUTH HELPERS
+// =====================================================
+
+/**
+ * Get current authenticated user's profile
+ * 
+ * @returns UserProfile or null if not authenticated
+ * @throws Error if profile not found for authenticated user
+ */
+export async function getCurrentUserProfile(): Promise<UserProfile | null> {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return null;
+  }
+
+  const { data: profile, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', user.id)
+    .single();
+
+  if (error || !profile) {
+    throw new Error('Profile not found for authenticated user');
+  }
+
+  const p = profile as any;
+  return {
+    id: p.id,
+    orgId: p.org_id,
+    role: p.role as 'ORG_ADMIN' | 'DEPARTMENT_ADMIN' | 'EMPLOYEE',
+    fullName: p.full_name,
+    email: p.email,
+    department: p.department,
+    location: p.location,
+    employmentType: p.employment_type,
+    departmentScope: p.department_scope,
+  };
+}
+
+/**
+ * Require user to be authenticated
+ * 
+ * @returns UserProfile
+ * @throws Error if not authenticated
+ */
+export async function requireAuth(): Promise<UserProfile> {
+  const profile = await getCurrentUserProfile();
+
+  if (!profile) {
+    throw new Error('Authentication required');
+  }
+
+  return profile;
+}
+
+/**
+ * Require user to have a specific role
+ * 
+ * @param role - Required role
+ * @returns UserProfile
+ * @throws Error if not authenticated or wrong role
+ */
+export async function requireRole(role: 'ORG_ADMIN' | 'DEPARTMENT_ADMIN' | 'EMPLOYEE'): Promise<UserProfile> {
+  const profile = await requireAuth();
+
+  if (profile.role !== role) {
+    throw new Error(`Access denied: ${role} role required`);
+  }
+
+  return profile;
+}
+
+/**
+ * Require user to be ORG_ADMIN
+ * 
+ * @returns UserProfile
+ * @throws Error if not ORG_ADMIN
+ */
+export async function requireOrgAdmin(): Promise<UserProfile> {
+  return await requireRole('ORG_ADMIN');
+}
+
+/**
+ * Require user to be an admin (ORG_ADMIN or DEPARTMENT_ADMIN)
+ * 
+ * @returns UserProfile
+ * @throws Error if not admin
+ */
+export async function requireAdmin(): Promise<UserProfile> {
+  const profile = await requireAuth();
+
+  if (profile.role !== 'ORG_ADMIN' && profile.role !== 'DEPARTMENT_ADMIN') {
+    throw new Error('Access denied: Admin role required');
+  }
+
+  return profile;
+}
+
+/**
+ * Check if user is an admin (ORG_ADMIN or DEPARTMENT_ADMIN)
+ * 
+ * @param userProfile - User profile to check
+ * @returns true if admin, false otherwise
+ */
+export function isAdmin(userProfile: UserProfile): boolean {
+  return userProfile.role === 'ORG_ADMIN' || userProfile.role === 'DEPARTMENT_ADMIN';
+}
+
+/**
+ * Assert that a resource belongs to the same organization as the user
+ * 
+ * @param userProfile - Current user's profile
+ * @param resourceOrgId - Organization ID of the resource
+ * @throws Error if org IDs don't match
+ */
+export function assertSameOrg(userProfile: UserProfile, resourceOrgId: string): void {
+  if (userProfile.orgId !== resourceOrgId) {
+    throw new Error('Access denied: Resource belongs to different organization');
+  }
+}
+
+// =====================================================
+// DOCUMENT ACCESS CONTROL
+// =====================================================
+
+/**
+ * Check if user can access a policy document
+ * 
+ * Rules:
+ * - HR_ADMIN: Can access all documents in their org
+ * - EMPLOYEE: Can access only ACTIVE + COMPLETED documents that match audience rules
+ * 
+ * @param userProfile - Current user's profile
+ * @param document - Policy document to check
+ * @returns true if user can access, false otherwise
+ */
+export function canUserAccessPolicyDocument(
+  userProfile: UserProfile,
+  document: PolicyDocument
+): boolean {
+  // Must be same organization
+  if (userProfile.orgId !== document.orgId) {
+    return false;
+  }
+
+  // HR_ADMIN can access all documents in their org
+  if (userProfile.role === 'HR_ADMIN') {
+    return true;
+  }
+
+  // EMPLOYEE restrictions:
+  
+  // Document must be ACTIVE
+  if (document.status !== 'ACTIVE') {
+    return false;
+  }
+
+  // Document must be COMPLETED (not still processing)
+  if (document.processingStatus !== 'COMPLETED') {
+    return false;
+  }
+
+  // Check audience rules
+  if (document.audienceType === 'ALL') {
+    return true;
+  }
+
+  // Custom audience: check department, location, employment type
+  const matchesDepartment =
+    !document.allowedDepartments ||
+    document.allowedDepartments.length === 0 ||
+    (userProfile.department && document.allowedDepartments.includes(userProfile.department));
+
+  const matchesLocation =
+    !document.allowedLocations ||
+    document.allowedLocations.length === 0 ||
+    (userProfile.location && document.allowedLocations.includes(userProfile.location));
+
+  const matchesEmploymentType =
+    !document.allowedEmploymentTypes ||
+    document.allowedEmploymentTypes.length === 0 ||
+    (userProfile.employmentType && document.allowedEmploymentTypes.includes(userProfile.employmentType));
+
+  // User must match ALL specified criteria
+  return matchesDepartment && matchesLocation && matchesEmploymentType;
+}
+
+/**
+ * Check if user can access a policy document chunk
+ * 
+ * This checks if the user has access to the parent document.
+ * 
+ * @param userProfile - Current user's profile
+ * @param chunk - Policy chunk with document info
+ * @param document - Parent document (if available)
+ * @returns true if user can access, false otherwise
+ */
+export async function canUserAccessPolicyChunk(
+  userProfile: UserProfile,
+  chunk: PolicyChunk,
+  document?: PolicyDocument
+): Promise<boolean> {
+  // Must be same organization
+  if (userProfile.orgId !== chunk.orgId) {
+    return false;
+  }
+
+  // HR_ADMIN can access all chunks in their org
+  if (userProfile.role === 'HR_ADMIN') {
+    return true;
+  }
+
+  // If document not provided, fetch it
+  if (!document) {
+    const supabase = await createClient();
+    const { data: doc, error } = await supabase
+      .from('policy_documents')
+      .select(
+        'id, org_id, title, status, processing_status, audience_type, allowed_departments, allowed_locations, allowed_employment_types'
+      )
+      .eq('id', chunk.documentId)
+      .single();
+
+    if (error || !doc) {
+      return false;
+    }
+
+    document = {
+      id: doc.id,
+      orgId: doc.org_id,
+      title: doc.title,
+      status: doc.status,
+      processingStatus: doc.processing_status,
+      audienceType: doc.audience_type as 'ALL' | 'CUSTOM',
+      allowedDepartments: doc.allowed_departments,
+      allowedLocations: doc.allowed_locations,
+      allowedEmploymentTypes: doc.allowed_employment_types,
+    };
+  }
+
+  // Check document access
+  return canUserAccessPolicyDocument(userProfile, document);
+}
+
+// =====================================================
+// QUERY HELPERS WITH PERMISSION FILTERING
+// =====================================================
+
+/**
+ * Get policy documents accessible to user
+ * 
+ * @param userProfile - Current user's profile
+ * @returns Array of documents user can access
+ */
+export async function getAccessibleDocuments(
+  userProfile: UserProfile
+): Promise<PolicyDocument[]> {
+  const supabase = await createClient();
+
+  // Base query: same org
+  let query = supabase
+    .from('policy_documents')
+    .select(
+      'id, org_id, title, status, processing_status, audience_type, allowed_departments, allowed_locations, allowed_employment_types'
+    )
+    .eq('org_id', userProfile.orgId);
+
+  // ORG_ADMIN and DEPARTMENT_ADMIN: return all
+  // EMPLOYEE: only ACTIVE + COMPLETED documents
+  if (userProfile.role === 'EMPLOYEE') {
+    query = query.eq('status', 'ACTIVE').eq('processing_status', 'COMPLETED');
+  }
+
+  const { data: documents, error } = await query;
+
+  if (error || !documents) {
+    return [];
+  }
+
+  // Map to PolicyDocument type
+  const allDocs: PolicyDocument[] = documents.map((doc) => ({
+    id: doc.id,
+    orgId: doc.org_id,
+    title: doc.title,
+    status: doc.status,
+    processingStatus: doc.processing_status,
+    audienceType: doc.audience_type as 'ALL' | 'CUSTOM',
+    allowedDepartments: doc.allowed_departments,
+    allowedLocations: doc.allowed_locations,
+    allowedEmploymentTypes: doc.allowed_employment_types,
+  }));
+
+  // HR_ADMIN: return all
+  if (userProfile.role === 'HR_ADMIN') {
+    return allDocs;
+  }
+
+  // EMPLOYEE: filter by audience rules
+  return allDocs.filter((doc) => canUserAccessPolicyDocument(userProfile, doc));
+}
+
+/**
+ * Get a single document if user has access
+ * 
+ * @param userProfile - Current user's profile
+ * @param documentId - Document ID to fetch
+ * @returns Document or null if not found/no access
+ */
+export async function getAccessibleDocument(
+  userProfile: UserProfile,
+  documentId: string
+): Promise<PolicyDocument | null> {
+  const supabase = await createClient();
+
+  const { data: doc, error } = await supabase
+    .from('policy_documents')
+    .select(
+      'id, org_id, title, status, processing_status, audience_type, allowed_departments, allowed_locations, allowed_employment_types'
+    )
+    .eq('id', documentId)
+    .single();
+
+  if (error || !doc) {
+    return null;
+  }
+
+  const document: PolicyDocument = {
+    id: doc.id,
+    orgId: doc.org_id,
+    title: doc.title,
+    status: doc.status,
+    processingStatus: doc.processing_status,
+    audienceType: doc.audience_type as 'ALL' | 'CUSTOM',
+    allowedDepartments: doc.allowed_departments,
+    allowedLocations: doc.allowed_locations,
+    allowedEmploymentTypes: doc.allowed_employment_types,
+  };
+
+  // Check access
+  if (!canUserAccessPolicyDocument(userProfile, document)) {
+    return null;
+  }
+
+  return document;
+}
+
+// =====================================================
+// LOGGING HELPERS (SAFE)
+// =====================================================
+
+/**
+ * Log security event (sanitized)
+ * 
+ * @param event - Event name
+ * @param metadata - Safe metadata (no sensitive data)
+ */
+export function logSecurityEvent(event: string, metadata?: Record<string, any>): void {
+  const safeMetadata = {
+    ...metadata,
+    timestamp: new Date().toISOString(),
+  };
+
+  // Remove any potentially sensitive fields
+  delete safeMetadata.content;
+  delete safeMetadata.text;
+  delete safeMetadata.policyText;
+  delete safeMetadata.chunks;
+  delete safeMetadata.prompt;
+  delete safeMetadata.apiKey;
+  delete safeMetadata.signedUrl;
+
+  console.log(`[SECURITY] ${event}`, safeMetadata);
+}

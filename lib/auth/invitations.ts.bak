@@ -1,0 +1,566 @@
+/**
+ * Invitation Actions - Onboarding System
+ * 
+ * Server actions for creating and managing user invitations.
+ * Only ORG_ADMIN can invite ORG_ADMIN and DEPARTMENT_ADMIN.
+ * ORG_ADMIN and DEPARTMENT_ADMIN can invite EMPLOYEE.
+ * 
+ * SECURITY: Server-side only. Role-based authorization enforced.
+ */
+
+'use server';
+
+import { createClient } from '@/lib/supabase/server';
+import { createClient as createAdminClient } from '@supabase/supabase-js';
+import { getCurrentUserProfile } from '@/lib/auth/permissions';
+import crypto from 'crypto';
+
+// Service role client for operations that bypass RLS
+const supabaseAdmin = createAdminClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+
+// =====================================================
+// TYPES
+// =====================================================
+
+export type UserRole = 'ORG_ADMIN' | 'DEPARTMENT_ADMIN' | 'EMPLOYEE';
+export type DepartmentScope = 'HR' | 'FINANCE' | 'IT' | 'OPS' | 'LEGAL';
+export type InvitationStatus = 'PENDING' | 'ACCEPTED' | 'EXPIRED' | 'REVOKED';
+
+export interface CreateInvitationInput {
+  email: string;
+  fullName?: string;
+  role: UserRole;
+  departmentScope?: DepartmentScope;
+  department?: string;
+  location?: string;
+  employmentType?: string;
+}
+
+export interface Invitation {
+  id: string;
+  orgId: string;
+  email: string;
+  fullName: string | null;
+  role: UserRole;
+  departmentScope: DepartmentScope | null;
+  department: string | null;
+  location: string | null;
+  employmentType: string | null;
+  token: string;
+  status: InvitationStatus;
+  invitedBy: string | null;
+  expiresAt: string;
+  acceptedAt: string | null;
+  createdAt: string;
+}
+
+// =====================================================
+// CREATE INVITATION
+// =====================================================
+
+/**
+ * Create a new user invitation
+ * 
+ * Authorization:
+ * - ORG_ADMIN: Can invite all roles
+ * - DEPARTMENT_ADMIN: Can only invite EMPLOYEE
+ * 
+ * @param input - Invitation details
+ * @returns Invitation object with token
+ */
+export async function createInvitation(
+  input: CreateInvitationInput
+): Promise<{ success: boolean; invitation?: Invitation; token?: string; error?: string }> {
+  try {
+    // 1. Get current user profile
+    const userProfile = await getCurrentUserProfile();
+
+    if (!userProfile) {
+      return { success: false, error: 'Unauthorized' };
+    }
+
+    // 2. Check authorization
+    if (userProfile.role === 'EMPLOYEE') {
+      return { success: false, error: 'Employees cannot send invitations' };
+    }
+
+    // DEPARTMENT_ADMIN can only invite EMPLOYEE
+    if (userProfile.role === 'DEPARTMENT_ADMIN' && input.role !== 'EMPLOYEE') {
+      return {
+        success: false,
+        error: 'Department admins can only invite employees',
+      };
+    }
+
+    // 3. Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(input.email)) {
+      return { success: false, error: 'Invalid email address' };
+    }
+
+    // 4. Check if email already exists in organization
+    const supabase = await createClient();
+    const { data: existingUser } = await supabase
+      .from('profiles')
+      .select('email')
+      .eq('org_id', userProfile.orgId)
+      .eq('email', input.email.toLowerCase())
+      .single();
+
+    if (existingUser) {
+      return {
+        success: false,
+        error: 'User with this email already exists in your organization',
+      };
+    }
+
+    // 5. Check if there's already a pending invitation
+    const { data: existingInvite } = await supabase
+      .from('invitations')
+      .select('id, status')
+      .eq('org_id', userProfile.orgId)
+      .eq('email', input.email.toLowerCase())
+      .eq('status', 'PENDING')
+      .single();
+
+    if (existingInvite) {
+      return {
+        success: false,
+        error: 'An invitation for this email is already pending',
+      };
+    }
+
+    // 6. Generate secure random token
+    const token = crypto.randomBytes(32).toString('hex');
+
+    // 7. Set expiration (7 days from now)
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 7);
+
+    // 8. Create invitation
+    const { data: invitation, error: insertError } = await supabaseAdmin
+      .from('invitations')
+      .insert({
+        org_id: userProfile.orgId,
+        email: input.email.toLowerCase(),
+        full_name: input.fullName || null,
+        role: input.role,
+        department_scope: input.departmentScope || null,
+        department: input.department || null,
+        location: input.location || null,
+        employment_type: input.employmentType || null,
+        token,
+        status: 'PENDING',
+        invited_by: userProfile.id,
+        expires_at: expiresAt.toISOString(),
+      })
+      .select()
+      .single();
+
+    if (insertError || !invitation) {
+      console.error('[Invitations] Error creating invitation:', insertError);
+      return { success: false, error: 'Failed to create invitation' };
+    }
+
+    // 9. Return invitation with token
+    return {
+      success: true,
+      invitation: {
+        id: invitation.id,
+        orgId: invitation.org_id,
+        email: invitation.email,
+        fullName: invitation.full_name,
+        role: invitation.role as UserRole,
+        departmentScope: invitation.department_scope as DepartmentScope | null,
+        department: invitation.department,
+        location: invitation.location,
+        employmentType: invitation.employment_type,
+        token: invitation.token,
+        status: invitation.status as InvitationStatus,
+        invitedBy: invitation.invited_by,
+        expiresAt: invitation.expires_at,
+        acceptedAt: invitation.accepted_at,
+        createdAt: invitation.created_at,
+      },
+      token,
+    };
+  } catch (error) {
+    console.error('[Invitations] Unexpected error:', error);
+    return { success: false, error: 'An unexpected error occurred' };
+  }
+}
+
+// =====================================================
+// GET INVITATION BY TOKEN
+// =====================================================
+
+/**
+ * Get invitation by token (for accept page)
+ * 
+ * @param token - Invitation token
+ * @returns Invitation details or null
+ */
+export async function getInvitationByToken(
+  token: string
+): Promise<{ success: boolean; invitation?: Invitation; error?: string }> {
+  try {
+    // Use admin client to bypass RLS for validation
+    const { data: invitation, error } = await supabaseAdmin
+      .from('invitations')
+      .select('*, organizations(name)')
+      .eq('token', token)
+      .single();
+
+    if (error || !invitation) {
+      return { success: false, error: 'Invalid invitation token' };
+    }
+
+    // Check status
+    if (invitation.status !== 'PENDING') {
+      return { success: false, error: `This invitation has been ${invitation.status.toLowerCase()}` };
+    }
+
+    // Check expiration
+    if (new Date(invitation.expires_at) < new Date()) {
+      // Mark as expired
+      await supabaseAdmin
+        .from('invitations')
+        .update({ status: 'EXPIRED' })
+        .eq('id', invitation.id);
+
+      return { success: false, error: 'This invitation has expired' };
+    }
+
+    return {
+      success: true,
+      invitation: {
+        id: invitation.id,
+        orgId: invitation.org_id,
+        email: invitation.email,
+        fullName: invitation.full_name,
+        role: invitation.role as UserRole,
+        departmentScope: invitation.department_scope as DepartmentScope | null,
+        department: invitation.department,
+        location: invitation.location,
+        employmentType: invitation.employment_type,
+        token: invitation.token,
+        status: invitation.status as InvitationStatus,
+        invitedBy: invitation.invited_by,
+        expiresAt: invitation.expires_at,
+        acceptedAt: invitation.accepted_at,
+        createdAt: invitation.created_at,
+      },
+    };
+  } catch (error) {
+    console.error('[Invitations] Error fetching invitation:', error);
+    return { success: false, error: 'Failed to validate invitation' };
+  }
+}
+
+// =====================================================
+// ACCEPT INVITATION
+// =====================================================
+
+/**
+ * Accept invitation and create user account
+ * 
+ * @param token - Invitation token
+ * @param password - User's password
+ * @param fullName - User's full name (optional, uses invitation default if not provided)
+ * @returns Success status and redirect URL
+ */
+export async function acceptInvitation(
+  token: string,
+  password: string,
+  fullName?: string
+): Promise<{
+  success: boolean;
+  redirectUrl?: string;
+  error?: string;
+}> {
+  try {
+    // 1. Validate invitation
+    const inviteResult = await getInvitationByToken(token);
+
+    if (!inviteResult.success || !inviteResult.invitation) {
+      return { success: false, error: inviteResult.error };
+    }
+
+    const invitation = inviteResult.invitation;
+
+    // 2. Create Supabase auth user
+    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+      email: invitation.email,
+      password,
+      email_confirm: true, // Auto-confirm email
+    });
+
+    if (authError || !authData.user) {
+      console.error('[Invitations] Error creating auth user:', authError);
+      return { success: false, error: 'Failed to create user account' };
+    }
+
+    // 3. Create profile
+    const { error: profileError } = await supabaseAdmin.from('profiles').insert({
+      id: authData.user.id,
+      org_id: invitation.orgId,
+      email: invitation.email,
+      full_name: fullName || invitation.fullName || invitation.email.split('@')[0],
+      role: invitation.role,
+      department_scope: invitation.departmentScope,
+      department: invitation.department,
+      location: invitation.location,
+      employment_type: invitation.employmentType,
+    });
+
+    if (profileError) {
+      console.error('[Invitations] Error creating profile:', profileError);
+      // Rollback: delete auth user
+      await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
+      return { success: false, error: 'Failed to create user profile' };
+    }
+
+    // 4. Mark invitation as accepted
+    const { error: updateError } = await supabaseAdmin
+      .from('invitations')
+      .update({
+        status: 'ACCEPTED',
+        accepted_at: new Date().toISOString(),
+      })
+      .eq('id', invitation.id);
+
+    if (updateError) {
+      console.error('[Invitations] Error updating invitation:', updateError);
+      // Don't fail - user is created, just log the error
+    }
+
+    // 5. Determine redirect URL based on role
+    const redirectUrl =
+      invitation.role === 'EMPLOYEE' ? '/employee/chat' : '/admin';
+
+    return {
+      success: true,
+      redirectUrl,
+    };
+  } catch (error) {
+    console.error('[Invitations] Unexpected error accepting invitation:', error);
+    return { success: false, error: 'An unexpected error occurred' };
+  }
+}
+
+// =====================================================
+// LIST INVITATIONS
+// =====================================================
+
+/**
+ * Get all invitations for current user's organization
+ * 
+ * @returns List of invitations
+ */
+export async function getOrganizationInvitations(): Promise<{
+  success: boolean;
+  invitations?: Invitation[];
+  error?: string;
+}> {
+  try {
+    const userProfile = await getCurrentUserProfile();
+
+    if (!userProfile) {
+      return { success: false, error: 'Unauthorized' };
+    }
+
+    // Only admins can view invitations
+    if (userProfile.role === 'EMPLOYEE') {
+      return { success: false, error: 'Access denied' };
+    }
+
+    const supabase = await createClient();
+
+    // Build query
+    let query = supabase
+      .from('invitations')
+      .select('*')
+      .eq('org_id', userProfile.orgId)
+      .order('created_at', { ascending: false });
+
+    // DEPARTMENT_ADMIN can only see invitations they created
+    if (userProfile.role === 'DEPARTMENT_ADMIN') {
+      query = query.eq('invited_by', userProfile.id);
+    }
+
+    const { data: invitations, error } = await query;
+
+    if (error) {
+      console.error('[Invitations] Error fetching invitations:', error);
+      return { success: false, error: 'Failed to fetch invitations' };
+    }
+
+    return {
+      success: true,
+      invitations: (invitations || []).map((inv) => ({
+        id: inv.id,
+        orgId: inv.org_id,
+        email: inv.email,
+        fullName: inv.full_name,
+        role: inv.role as UserRole,
+        departmentScope: inv.department_scope as DepartmentScope | null,
+        department: inv.department,
+        location: inv.location,
+        employmentType: inv.employment_type,
+        token: inv.token,
+        status: inv.status as InvitationStatus,
+        invitedBy: inv.invited_by,
+        expiresAt: inv.expires_at,
+        acceptedAt: inv.accepted_at,
+        createdAt: inv.created_at,
+      })),
+    };
+  } catch (error) {
+    console.error('[Invitations] Error listing invitations:', error);
+    return { success: false, error: 'An unexpected error occurred' };
+  }
+}
+
+// =====================================================
+// REVOKE INVITATION
+// =====================================================
+
+/**
+ * Revoke a pending invitation
+ * 
+ * @param invitationId - Invitation ID to revoke
+ * @returns Success status
+ */
+export async function revokeInvitation(
+  invitationId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const userProfile = await getCurrentUserProfile();
+
+    if (!userProfile) {
+      return { success: false, error: 'Unauthorized' };
+    }
+
+    // Only ORG_ADMIN can revoke invitations (or the person who created it)
+    if (userProfile.role === 'EMPLOYEE') {
+      return { success: false, error: 'Access denied' };
+    }
+
+    const supabase = await createClient();
+
+    // Get invitation to verify ownership
+    const { data: invitation } = await supabase
+      .from('invitations')
+      .select('invited_by, status, org_id')
+      .eq('id', invitationId)
+      .single();
+
+    if (!invitation) {
+      return { success: false, error: 'Invitation not found' };
+    }
+
+    // Verify same org
+    if (invitation.org_id !== userProfile.orgId) {
+      return { success: false, error: 'Access denied' };
+    }
+
+    // DEPARTMENT_ADMIN can only revoke their own invitations
+    if (
+      userProfile.role === 'DEPARTMENT_ADMIN' &&
+      invitation.invited_by !== userProfile.id
+    ) {
+      return { success: false, error: 'You can only revoke invitations you created' };
+    }
+
+    // Can only revoke pending invitations
+    if (invitation.status !== 'PENDING') {
+      return { success: false, error: 'Can only revoke pending invitations' };
+    }
+
+    // Revoke invitation
+    const { error: updateError } = await supabaseAdmin
+      .from('invitations')
+      .update({ status: 'REVOKED' })
+      .eq('id', invitationId);
+
+    if (updateError) {
+      console.error('[Invitations] Error revoking invitation:', updateError);
+      return { success: false, error: 'Failed to revoke invitation' };
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error('[Invitations] Error revoking invitation:', error);
+    return { success: false, error: 'An unexpected error occurred' };
+  }
+}
+
+// =====================================================
+// RESEND INVITATION
+// =====================================================
+
+/**
+ * Resend invitation (extends expiry and generates new token)
+ * 
+ * @param invitationId - Invitation ID to resend
+ * @returns New token
+ */
+export async function resendInvitation(
+  invitationId: string
+): Promise<{ success: boolean; token?: string; error?: string }> {
+  try {
+    const userProfile = await getCurrentUserProfile();
+
+    if (!userProfile) {
+      return { success: false, error: 'Unauthorized' };
+    }
+
+    if (userProfile.role === 'EMPLOYEE') {
+      return { success: false, error: 'Access denied' };
+    }
+
+    const supabase = await createClient();
+
+    // Get invitation
+    const { data: invitation } = await supabase
+      .from('invitations')
+      .select('*')
+      .eq('id', invitationId)
+      .single();
+
+    if (!invitation || invitation.org_id !== userProfile.orgId) {
+      return { success: false, error: 'Invitation not found' };
+    }
+
+    if (invitation.status !== 'PENDING' && invitation.status !== 'EXPIRED') {
+      return { success: false, error: 'Cannot resend this invitation' };
+    }
+
+    // Generate new token and extend expiry
+    const newToken = crypto.randomBytes(32).toString('hex');
+    const newExpiresAt = new Date();
+    newExpiresAt.setDate(newExpiresAt.getDate() + 7);
+
+    const { error: updateError } = await supabaseAdmin
+      .from('invitations')
+      .update({
+        token: newToken,
+        status: 'PENDING',
+        expires_at: newExpiresAt.toISOString(),
+      })
+      .eq('id', invitationId);
+
+    if (updateError) {
+      console.error('[Invitations] Error resending invitation:', updateError);
+      return { success: false, error: 'Failed to resend invitation' };
+    }
+
+    return { success: true, token: newToken };
+  } catch (error) {
+    console.error('[Invitations] Error resending invitation:', error);
+    return { success: false, error: 'An unexpected error occurred' };
+  }
+}

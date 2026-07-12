@@ -1,0 +1,497 @@
+/**
+ * Audit Logging System
+ * 
+ * Server-side only audit logging for tracking all security-relevant actions.
+ * Uses service role to bypass RLS for writing logs.
+ * 
+ * SECURITY: Never expose service role client to browser.
+ */
+
+'use server';
+
+import { createClient as createAdminClient } from '@supabase/supabase-js';
+import { getCurrentUserProfile } from '@/lib/auth/permissions';
+
+// Service role client for operations that bypass RLS
+const supabaseAdmin = createAdminClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+
+// =====================================================
+// AUDIT ACTION TYPES
+// =====================================================
+
+export type AuditAction =
+  // Organization
+  | 'organization_created'
+  | 'organization_updated'
+  // User Management
+  | 'user_invited'
+  | 'invite_accepted'
+  | 'invite_revoked'
+  | 'invite_resent'
+  | 'user_deactivated'
+  | 'user_reactivated'
+  // Documents
+  | 'document_uploaded'
+  | 'document_archived'
+  | 'document_unarchived'
+  | 'document_deleted'
+  | 'document_audience_updated'
+  | 'document_viewed'
+  | 'document_processed'
+  | 'document_processing_failed'
+  // Embeddings
+  | 'embeddings_generated'
+  | 'embeddings_failed'
+  // Chat & AI
+  | 'employee_question_asked'
+  | 'ai_answer_generated'
+  | 'faq_answer_returned'
+  | 'signed_url_generated'
+  // Clarifications
+  | 'clarification_created'
+  | 'clarification_resolved'
+  | 'clarification_deleted'
+  // FAQ
+  | 'faq_created'
+  | 'faq_updated'
+  | 'faq_archived'
+  | 'faq_deleted'
+  // Security
+  | 'unauthorized_access_attempt'
+  | 'rate_limit_exceeded'
+  | 'suspicious_activity_detected';
+
+export type ResourceType =
+  | 'organization'
+  | 'user'
+  | 'invitation'
+  | 'document'
+  | 'chunk'
+  | 'embedding'
+  | 'chat_message'
+  | 'clarification'
+  | 'faq'
+  | 'signed_url';
+
+export interface AuditLogMetadata {
+  [key: string]: any;
+  old_value?: any;
+  new_value?: any;
+  details?: string;
+  error?: string;
+  ip_address?: string;
+  user_agent?: string;
+}
+
+export interface AuditLog {
+  id: string;
+  orgId: string;
+  actorUserId: string | null;
+  action: AuditAction;
+  resourceType: ResourceType | null;
+  resourceId: string | null;
+  metadata: AuditLogMetadata;
+  createdAt: string;
+}
+
+// =====================================================
+// CREATE AUDIT LOG
+// =====================================================
+
+/**
+ * Create an audit log entry
+ * 
+ * @param action - Action performed
+ * @param resourceType - Type of resource affected (optional)
+ * @param resourceId - ID of resource affected (optional)
+ * @param metadata - Additional context (optional)
+ * @returns Success status
+ */
+export async function createAuditLog(
+  action: AuditAction,
+  resourceType?: ResourceType,
+  resourceId?: string,
+  metadata?: AuditLogMetadata
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    // Get current user profile (if authenticated)
+    let userProfile = null;
+    let orgId = null;
+
+    try {
+      userProfile = await getCurrentUserProfile();
+      orgId = userProfile?.orgId || null;
+    } catch (error) {
+      // For actions like organization_created, there's no current user yet
+      // In these cases, orgId and actorUserId will be in metadata or null
+      if (metadata?.org_id) {
+        orgId = metadata.org_id as string;
+      }
+    }
+
+    // If no org_id found anywhere, skip audit log
+    if (!orgId) {
+      console.warn('[AuditLog] No org_id available for action:', action);
+      return { success: false, error: 'No organization context' };
+    }
+
+    // Create audit log entry
+    const { error: insertError } = await supabaseAdmin.from('audit_logs').insert({
+      org_id: orgId,
+      actor_user_id: userProfile?.id || metadata?.actor_user_id || null,
+      action,
+      resource_type: resourceType || null,
+      resource_id: resourceId || null,
+      metadata: metadata || {},
+    });
+
+    if (insertError) {
+      console.error('[AuditLog] Failed to create audit log:', insertError);
+      return { success: false, error: insertError.message };
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error('[AuditLog] Unexpected error:', error);
+    return { success: false, error: 'Unexpected error creating audit log' };
+  }
+}
+
+// =====================================================
+// CONVENIENCE HELPERS
+// =====================================================
+
+/**
+ * Log organization creation
+ */
+export async function logOrganizationCreated(
+  orgId: string,
+  adminUserId: string,
+  orgName: string
+) {
+  return createAuditLog('organization_created', 'organization', orgId, {
+    org_id: orgId,
+    actor_user_id: adminUserId,
+    org_name: orgName,
+  });
+}
+
+/**
+ * Log user invitation
+ */
+export async function logUserInvited(
+  invitationId: string,
+  email: string,
+  role: string
+) {
+  return createAuditLog('user_invited', 'invitation', invitationId, {
+    email,
+    role,
+  });
+}
+
+/**
+ * Log invitation acceptance
+ */
+export async function logInviteAccepted(
+  invitationId: string,
+  userId: string,
+  email: string,
+  role: string
+) {
+  return createAuditLog('invite_accepted', 'invitation', invitationId, {
+    user_id: userId,
+    email,
+    role,
+  });
+}
+
+/**
+ * Log document upload
+ */
+export async function logDocumentUploaded(
+  documentId: string,
+  fileName: string,
+  audienceType: string
+) {
+  return createAuditLog('document_uploaded', 'document', documentId, {
+    file_name: fileName,
+    audience_type: audienceType,
+  });
+}
+
+/**
+ * Log document audience update
+ */
+export async function logDocumentAudienceUpdated(
+  documentId: string,
+  oldAudience: any,
+  newAudience: any
+) {
+  return createAuditLog('document_audience_updated', 'document', documentId, {
+    old_value: oldAudience,
+    new_value: newAudience,
+  });
+}
+
+/**
+ * Log embeddings generation
+ */
+export async function logEmbeddingsGenerated(
+  documentId: string,
+  chunksCount: number,
+  embeddingsCount: number
+) {
+  return createAuditLog('embeddings_generated', 'document', documentId, {
+    chunks_count: chunksCount,
+    embeddings_count: embeddingsCount,
+  });
+}
+
+/**
+ * Log employee question
+ */
+export async function logEmployeeQuestion(
+  messageId?: string | null | undefined,
+  hasResults?: boolean
+) {
+  return createAuditLog('employee_question_asked', 'chat_message', messageId ?? undefined, {
+    has_results: hasResults,
+  });
+}
+
+/**
+ * Log AI answer generation
+ */
+export async function logAIAnswerGenerated(
+  messageId?: string | null | undefined,
+  chunksUsed?: number,
+  model?: string
+) {
+  return createAuditLog('ai_answer_generated', 'chat_message', messageId ?? undefined, {
+    chunks_used: chunksUsed,
+    model,
+  });
+}
+
+/**
+ * Log FAQ answer return
+ */
+export async function logFAQAnswerReturned(faqId: string, question: string) {
+  return createAuditLog('faq_answer_returned', 'faq', faqId, {
+    question,
+  });
+}
+
+/**
+ * Log signed URL generation
+ */
+export async function logSignedURLGenerated(
+  documentId: string,
+  fileName: string,
+  expiresIn: number
+) {
+  return createAuditLog('signed_url_generated', 'document', documentId, {
+    file_name: fileName,
+    expires_in_seconds: expiresIn,
+  });
+}
+
+/**
+ * Log unauthorized access attempt
+ */
+export async function logUnauthorizedAccess(
+  resourceType: ResourceType,
+  resourceId: string,
+  reason: string
+) {
+  return createAuditLog('unauthorized_access_attempt', resourceType, resourceId, {
+    reason,
+  });
+}
+
+/**
+ * Log clarification creation
+ */
+export async function logClarificationCreated(
+  clarificationId: string,
+  question: string
+) {
+  return createAuditLog('clarification_created', 'clarification', clarificationId, {
+    question,
+  });
+}
+
+/**
+ * Log clarification resolution
+ */
+export async function logClarificationResolved(
+  clarificationId: string,
+  response: string
+) {
+  return createAuditLog('clarification_resolved', 'clarification', clarificationId, {
+    response_preview: response.substring(0, 100),
+  });
+}
+
+/**
+ * Log FAQ creation
+ */
+export async function logFAQCreated(
+  faqId: string,
+  question: string,
+  category?: string
+) {
+  return createAuditLog('faq_created', 'faq', faqId, {
+    question,
+    category,
+  });
+}
+
+/**
+ * Log FAQ update
+ */
+export async function logFAQUpdated(
+  faqId: string,
+  changes: Record<string, any>
+) {
+  return createAuditLog('faq_updated', 'faq', faqId, {
+    changes,
+  });
+}
+
+/**
+ * Log FAQ archival
+ */
+export async function logFAQArchived(faqId: string) {
+  return createAuditLog('faq_archived', 'faq', faqId);
+}
+
+// =====================================================
+// GET AUDIT LOGS
+// =====================================================
+
+/**
+ * Get recent audit logs for current user's organization
+ * 
+ * @param limit - Number of logs to return (default: 100)
+ * @param offset - Offset for pagination (default: 0)
+ * @returns Audit logs
+ */
+export async function getOrganizationAuditLogs(
+  limit: number = 100,
+  offset: number = 0
+): Promise<{
+  success: boolean;
+  logs?: AuditLog[];
+  total?: number;
+  error?: string;
+}> {
+  try {
+    const userProfile = await getCurrentUserProfile();
+
+    if (!userProfile) {
+      return { success: false, error: 'Unauthorized' };
+    }
+
+    // Only admins can view audit logs
+    if (userProfile.role !== 'ORG_ADMIN' && userProfile.role !== 'DEPARTMENT_ADMIN') {
+      return { success: false, error: 'Access denied' };
+    }
+
+    // Get total count
+    const { count } = await supabaseAdmin
+      .from('audit_logs')
+      .select('*', { count: 'exact', head: true })
+      .eq('org_id', userProfile.orgId);
+
+    // Get logs with pagination
+    const { data: logs, error } = await supabaseAdmin
+      .from('audit_logs')
+      .select('*, profiles:actor_user_id(full_name, email)')
+      .eq('org_id', userProfile.orgId)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    if (error) {
+      console.error('[AuditLog] Failed to fetch audit logs:', error);
+      return { success: false, error: error.message };
+    }
+
+    return {
+      success: true,
+      logs: (logs || []).map((log) => ({
+        id: log.id,
+        orgId: log.org_id,
+        actorUserId: log.actor_user_id,
+        action: log.action as AuditAction,
+        resourceType: log.resource_type as ResourceType | null,
+        resourceId: log.resource_id,
+        metadata: log.metadata,
+        createdAt: log.created_at,
+      })),
+      total: count || 0,
+    };
+  } catch (error) {
+    console.error('[AuditLog] Error fetching audit logs:', error);
+    return { success: false, error: 'Failed to fetch audit logs' };
+  }
+}
+
+/**
+ * Get audit logs for a specific resource
+ */
+export async function getResourceAuditLogs(
+  resourceType: ResourceType,
+  resourceId: string
+): Promise<{
+  success: boolean;
+  logs?: AuditLog[];
+  error?: string;
+}> {
+  try {
+    const userProfile = await getCurrentUserProfile();
+
+    if (!userProfile) {
+      return { success: false, error: 'Unauthorized' };
+    }
+
+    // Only admins can view audit logs
+    if (userProfile.role !== 'ORG_ADMIN' && userProfile.role !== 'DEPARTMENT_ADMIN') {
+      return { success: false, error: 'Access denied' };
+    }
+
+    const { data: logs, error } = await supabaseAdmin
+      .from('audit_logs')
+      .select('*, profiles:actor_user_id(full_name, email)')
+      .eq('org_id', userProfile.orgId)
+      .eq('resource_type', resourceType)
+      .eq('resource_id', resourceId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('[AuditLog] Failed to fetch resource audit logs:', error);
+      return { success: false, error: error.message };
+    }
+
+    return {
+      success: true,
+      logs: (logs || []).map((log) => ({
+        id: log.id,
+        orgId: log.org_id,
+        actorUserId: log.actor_user_id,
+        action: log.action as AuditAction,
+        resourceType: log.resource_type as ResourceType | null,
+        resourceId: log.resource_id,
+        metadata: log.metadata,
+        createdAt: log.created_at,
+      })),
+    };
+  } catch (error) {
+    console.error('[AuditLog] Error fetching resource audit logs:', error);
+    return { success: false, error: 'Failed to fetch audit logs' };
+  }
+}

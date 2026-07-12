@@ -1,0 +1,515 @@
+/**
+ * Analytics Query Functions
+ * 
+ * Provides HR admins with insights into employee questions,
+ * answer quality, and policy usage.
+ */
+
+'use server';
+
+import { createClient } from '@/lib/supabase/server';
+
+export interface AnalyticsSummary {
+  totalQuestions: number;
+  unansweredQuestions: number;
+  helpfulFeedback: number;
+  notHelpfulFeedback: number;
+  helpfulRate: number;
+  totalDocuments: number;
+  totalEmployees: number;
+  totalClarifications: number;
+  openClarifications: number;
+}
+
+export interface TopQuestion {
+  question: string;
+  questionCount: number;
+  lastAsked: string;
+}
+
+export interface UnansweredQuestion {
+  id: string;
+  question: string;
+  answer: string | null;
+  employeeName: string;
+  employeeEmail: string;
+  createdAt: string;
+  sessionId: string;
+}
+
+export interface NotHelpfulFeedback {
+  id: string;
+  question: string;
+  answer: string;
+  feedback: string;
+  comment: string | null;
+  employeeName: string;
+  createdAt: string;
+  messageId: string;
+}
+
+export interface SourceUsage {
+  documentTitle: string;
+  documentId: string;
+  category: string;
+  citationCount: number;
+}
+
+export interface RecentQuestion {
+  id: string;
+  question: string;
+  answer: string | null;
+  employeeName: string;
+  confidence: string | null;
+  createdAt: string;
+  hasAnswer: boolean;
+}
+
+/**
+ * Get analytics summary for HR admin's organization
+ */
+export async function getAdminAnalyticsSummary(): Promise<AnalyticsSummary | null> {
+  try {
+    const supabase = await createClient();
+
+    // Get authenticated user
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return null;
+    }
+
+    // Get user profile
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('org_id, role')
+      .eq('id', user.id)
+      .single();
+
+    const p = profile as any;
+    if (!profile || p.role !== 'HR_ADMIN' || !p.org_id) {
+      return null;
+    }
+
+    // Call the analytics function
+    const { data, error } = await supabase.rpc('get_analytics_summary', {
+      org_uuid: p.org_id,
+    } as any);
+
+    if (error) {
+      console.error('[Analytics] Error fetching summary:', error);
+      return null;
+    }
+
+    const d = data as any;
+    if (!data || d.length === 0) {
+      return {
+        totalQuestions: 0,
+        unansweredQuestions: 0,
+        helpfulFeedback: 0,
+        notHelpfulFeedback: 0,
+        helpfulRate: 0,
+        totalDocuments: 0,
+        totalEmployees: 0,
+        totalClarifications: 0,
+        openClarifications: 0,
+      };
+    }
+
+    const summary = d[0];
+
+    return {
+      totalQuestions: Number(summary.total_questions),
+      unansweredQuestions: Number(summary.unanswered_questions),
+      helpfulFeedback: Number(summary.helpful_feedback),
+      notHelpfulFeedback: Number(summary.not_helpful_feedback),
+      helpfulRate: Number(summary.helpful_rate),
+      totalDocuments: Number(summary.total_documents),
+      totalEmployees: Number(summary.total_employees),
+      totalClarifications: Number(summary.total_clarifications),
+      openClarifications: Number(summary.open_clarifications),
+    };
+  } catch (error) {
+    console.error('[Analytics] Error in getAdminAnalyticsSummary:', error);
+    return null;
+  }
+}
+
+/**
+ * Get top asked questions
+ */
+export async function getTopQuestions(limit: number = 10): Promise<TopQuestion[]> {
+  try {
+    const supabase = await createClient();
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return [];
+    }
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('org_id, role')
+      .eq('id', user.id)
+      .single();
+
+    const p = profile as any;
+    if (!profile || p.role !== 'HR_ADMIN' || !p.org_id) {
+      return [];
+    }
+
+    const { data, error } = await supabase.rpc('get_top_questions', {
+      org_uuid: p.org_id,
+      limit_count: limit,
+    } as any);
+
+    if (error) {
+      console.error('[Analytics] Error fetching top questions:', error);
+      return [];
+    }
+
+    const d = data as any;
+    return (d || []).map((row: any) => ({
+      question: row.question,
+      questionCount: Number(row.question_count),
+      lastAsked: row.last_asked,
+    }));
+  } catch (error) {
+    console.error('[Analytics] Error in getTopQuestions:', error);
+    return [];
+  }
+}
+
+/**
+ * Get unanswered questions
+ */
+export async function getUnansweredQuestions(): Promise<UnansweredQuestion[]> {
+  try {
+    const supabase = await createClient();
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return [];
+    }
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('org_id, role')
+      .eq('id', user.id)
+      .single();
+
+    const p = profile as any;
+    if (!profile || p.role !== 'HR_ADMIN' || !p.org_id) {
+      return [];
+    }
+
+    // Get unanswered assistant messages with their corresponding user questions
+    const { data: unansweredMessages, error } = await supabase
+      .from('chat_messages')
+      .select(
+        `
+        id,
+        content,
+        session_id,
+        user_id,
+        created_at,
+        profiles!inner(full_name, email)
+      `
+      )
+      .eq('org_id', p.org_id)
+      .eq('role', 'assistant')
+      .eq('is_unanswered', true)
+      .order('created_at', { ascending: false })
+      .limit(50);
+
+    if (error) {
+      console.error('[Analytics] Error fetching unanswered questions:', error);
+      return [];
+    }
+
+    // For each unanswered message, get the corresponding user question
+    const results: UnansweredQuestion[] = [];
+
+    for (const msg of (unansweredMessages as any[]) || []) {
+      // Get the user message from the same session that came before this assistant message
+      const { data: userMessage } = await supabase
+        .from('chat_messages')
+        .select('content')
+        .eq('session_id', msg.session_id)
+        .eq('role', 'user')
+        .lt('created_at', msg.created_at)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      const um = userMessage as any;
+      results.push({
+        id: msg.id,
+        question: um?.content || 'Question not found',
+        answer: msg.content,
+        employeeName: (msg.profiles as any)?.full_name || 'Unknown',
+        employeeEmail: (msg.profiles as any)?.email || '',
+        createdAt: msg.created_at,
+        sessionId: msg.session_id,
+      });
+    }
+
+    return results;
+  } catch (error) {
+    console.error('[Analytics] Error in getUnansweredQuestions:', error);
+    return [];
+  }
+}
+
+/**
+ * Get not helpful feedback
+ */
+export async function getNotHelpfulFeedback(): Promise<NotHelpfulFeedback[]> {
+  try {
+    const supabase = await createClient();
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return [];
+    }
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('org_id, role')
+      .eq('id', user.id)
+      .single();
+
+    const p = profile as any;
+    if (!profile || p.role !== 'HR_ADMIN' || !p.org_id) {
+      return [];
+    }
+
+    const { data, error } = await supabase
+      .from('question_feedback')
+      .select(
+        `
+        id,
+        comment,
+        created_at,
+        message_id,
+        chat_messages!inner(id, content, role, session_id),
+        profiles!inner(full_name)
+      `
+      )
+      .eq('org_id', p.org_id)
+      .eq('feedback', 'NOT_HELPFUL')
+      .order('created_at', { ascending: false })
+      .limit(50);
+
+    if (error) {
+      console.error('[Analytics] Error fetching not helpful feedback:', error);
+      return [];
+    }
+
+    const results: NotHelpfulFeedback[] = [];
+
+    for (const feedback of (data as any[]) || []) {
+      const message = (feedback.chat_messages as any);
+      
+      // Get the user question from the same session
+      const { data: userMessage } = await supabase
+        .from('chat_messages')
+        .select('content')
+        .eq('session_id', message.session_id)
+        .eq('role', 'user')
+        .lt('created_at', feedback.created_at)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      const um = userMessage as any;
+      results.push({
+        id: feedback.id,
+        question: um?.content || 'Question not found',
+        answer: message.content,
+        feedback: 'NOT_HELPFUL',
+        comment: feedback.comment,
+        employeeName: (feedback.profiles as any)?.full_name || 'Unknown',
+        createdAt: feedback.created_at,
+        messageId: feedback.message_id,
+      });
+    }
+
+    return results;
+  } catch (error) {
+    console.error('[Analytics] Error in getNotHelpfulFeedback:', error);
+    return [];
+  }
+}
+
+/**
+ * Get source usage statistics (which policy documents are most cited)
+ */
+export async function getSourceUsage(): Promise<SourceUsage[]> {
+  try {
+    const supabase = await createClient();
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return [];
+    }
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('org_id, role')
+      .eq('id', user.id)
+      .single();
+
+    const p = profile as any;
+    if (!profile || p.role !== 'ORG_ADMIN' && p.role !== 'DEPARTMENT_ADMIN' || !p.org_id) {
+      return [];
+    }
+
+    // Get all assistant messages with sources
+    const { data: messages, error } = await supabase
+      .from('chat_messages')
+      .select('sources')
+      .eq('org_id', p.org_id)
+      .eq('role', 'assistant')
+      .not('sources', 'is', null);
+
+    if (error) {
+      console.error('[Analytics] Error fetching source usage:', error);
+      return [];
+    }
+
+    // Count document citations
+    const documentCounts = new Map<string, { title: string; category: string; count: number }>();
+
+    for (const message of (messages as any[]) || []) {
+      if (message.sources && Array.isArray(message.sources)) {
+        for (const source of message.sources) {
+          const title = source.documentTitle;
+          if (title) {
+            const existing = documentCounts.get(title);
+            if (existing) {
+              existing.count++;
+            } else {
+              documentCounts.set(title, {
+                title,
+                category: source.category || 'Unknown',
+                count: 1,
+              });
+            }
+          }
+        }
+      }
+    }
+
+    // Convert to array and sort by count
+    const results: SourceUsage[] = Array.from(documentCounts.values())
+      .map((doc) => ({
+        documentTitle: doc.title,
+        documentId: '', // Not available from sources, would need to join with policy_documents
+        category: doc.category,
+        citationCount: doc.count,
+      }))
+      .sort((a, b) => b.citationCount - a.citationCount)
+      .slice(0, 20);
+
+    return results;
+  } catch (error) {
+    console.error('[Analytics] Error in getSourceUsage:', error);
+    return [];
+  }
+}
+
+/**
+ * Get recent questions
+ */
+export async function getRecentQuestions(limit: number = 20): Promise<RecentQuestion[]> {
+  try {
+    const supabase = await createClient();
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return [];
+    }
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('org_id, role')
+      .eq('id', user.id)
+      .single();
+
+    const p = profile as any;
+    if (!profile || p.role !== 'ORG_ADMIN' && p.role !== 'DEPARTMENT_ADMIN' || !p.org_id) {
+      return [];
+    }
+
+    // Get recent user messages
+    const { data: userMessages, error } = await supabase
+      .from('chat_messages')
+      .select(
+        `
+        id,
+        content,
+        session_id,
+        created_at,
+        profiles!inner(full_name)
+      `
+      )
+      .eq('org_id', p.org_id)
+      .eq('role', 'user')
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (error) {
+      console.error('[Analytics] Error fetching recent questions:', error);
+      return [];
+    }
+
+    const results: RecentQuestion[] = [];
+
+    for (const userMsg of (userMessages as any[]) || []) {
+      // Get the assistant response
+      const { data: assistantMsg } = await supabase
+        .from('chat_messages')
+        .select('content, confidence')
+        .eq('session_id', userMsg.session_id)
+        .eq('role', 'assistant')
+        .gt('created_at', userMsg.created_at)
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .single();
+
+      const aMsg = assistantMsg as any;
+      results.push({
+        id: userMsg.id,
+        question: userMsg.content,
+        answer: aMsg?.content || null,
+        employeeName: (userMsg.profiles as any)?.full_name || 'Unknown',
+        confidence: aMsg?.confidence || null,
+        createdAt: userMsg.created_at,
+        hasAnswer: !!assistantMsg,
+      });
+    }
+
+    return results;
+  } catch (error) {
+    console.error('[Analytics] Error in getRecentQuestions:', error);
+    return [];
+  }
+}
