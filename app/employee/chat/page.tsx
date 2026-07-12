@@ -5,9 +5,28 @@
  * 
  * Provides an AI-powered chat interface for employees to ask
  * questions about HR policies and get instant answers.
+ * 
+ * Optimized with lazy loading for PolicyChat component
  */
 
-import { PolicyChat } from '@/components/chat/PolicyChat';
+import dynamic from 'next/dynamic';
+import { Loader2 } from 'lucide-react';
+
+// Lazy load PolicyChat - heavy component with lots of dependencies
+const PolicyChat = dynamic(
+  () => import('@/components/chat/PolicyChat').then(mod => ({ default: mod.PolicyChat })),
+  {
+    loading: () => (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center space-y-3">
+          <Loader2 className="w-8 h-8 text-blue-600 animate-spin mx-auto" />
+          <p className="text-sm text-gray-600">Loading chat interface...</p>
+        </div>
+      </div>
+    ),
+    ssr: false, // Client-side only for better performance
+  }
+);
 
 export const metadata = {
   title: 'PolicyPal AI - Ask HR Questions',
