@@ -2,11 +2,12 @@
  * Policy Chat Component
  * 
  * Main chat interface for employee policy questions
+ * Optimized with React.memo, useCallback, and useMemo
  */
 
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, memo, useCallback, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card } from '@/components/ui/card';
@@ -30,7 +31,7 @@ interface Message {
   nextStep?: string;
 }
 
-export function PolicyChat() {
+function PolicyChatComponent() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -58,7 +59,7 @@ export function PolicyChat() {
     }
   }, [isLoadingHistory]);
 
-  const loadChatHistory = async () => {
+  const loadChatHistory = useCallback(async () => {
     try {
       const latestSession = await getLatestChatSession();
 
@@ -80,9 +81,9 @@ export function PolicyChat() {
     } finally {
       setIsLoadingHistory(false);
     }
-  };
+  }, []);
 
-  const handleNewChat = () => {
+  const handleNewChat = useCallback(() => {
     if (messages.length > 0) {
       if (confirm('Start a new conversation? Your current chat will be saved.')) {
         setMessages([]);
@@ -91,9 +92,9 @@ export function PolicyChat() {
         textareaRef.current?.focus();
       }
     }
-  };
+  }, [messages.length]);
 
-  const handleSend = async () => {
+  const handleSend = useCallback(async () => {
     const question = input.trim();
     
     if (!question || isLoading) return;
@@ -165,19 +166,23 @@ export function PolicyChat() {
       setIsLoading(false);
       textareaRef.current?.focus();
     }
-  };
+  }, [sessionId, input]);
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
     }
-  };
+  }, [handleSend]);
 
-  const handleExampleClick = (prompt: string) => {
+  const handleExampleClick = useCallback((prompt: string) => {
     setInput(prompt);
     textareaRef.current?.focus();
-  };
+  }, []);
+
+  // Memoize computed values
+  const hasMessages = useMemo(() => messages.length > 0, [messages.length]);
+  const messageCount = useMemo(() => messages.length, [messages.length]);
 
   return (
     <div className="flex flex-col h-full">
@@ -238,7 +243,7 @@ export function PolicyChat() {
             </div>
 
             {messages.map((message, index) => (
-              <ChatMessage key={index} {...message} />
+              <ChatMessage key={message.messageId || index} {...message} />
             ))}
 
             {/* Loading indicator */}
@@ -308,3 +313,6 @@ export function PolicyChat() {
     </div>
   );
 }
+
+// Memoized export for performance - prevents re-renders when parent updates
+export const PolicyChat = memo(PolicyChatComponent);

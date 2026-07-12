@@ -2,6 +2,7 @@
  * Chat Message Component
  * 
  * Displays individual chat messages (user or assistant)
+ * Optimized with React.memo for list rendering performance
  */
 
 'use client';
@@ -11,7 +12,7 @@ import { Bot, User } from 'lucide-react';
 import { SourceList } from './SourceList';
 import { FeedbackButtons } from './FeedbackButtons';
 import { AskHRButton } from './AskHRButton';
-import { useState } from 'react';
+import { useState, memo, useCallback } from 'react';
 
 interface Source {
   documentTitle: string;
@@ -30,7 +31,7 @@ interface ChatMessageProps {
   nextStep?: string;
 }
 
-export function ChatMessage({
+function ChatMessageComponent({
   role,
   content,
   messageId,
@@ -44,12 +45,12 @@ export function ChatMessage({
   const [showAskHR, setShowAskHR] = useState(isUnanswered);
   const [feedbackGiven, setFeedbackGiven] = useState<'HELPFUL' | 'NOT_HELPFUL' | null>(null);
 
-  const handleFeedbackSubmitted = (feedback: 'HELPFUL' | 'NOT_HELPFUL') => {
+  const handleFeedbackSubmitted = useCallback((feedback: 'HELPFUL' | 'NOT_HELPFUL') => {
     setFeedbackGiven(feedback);
     if (feedback === 'NOT_HELPFUL') {
       setShowAskHR(true);
     }
-  };
+  }, []);
 
   return (
     <div className={`flex gap-3 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
@@ -122,4 +123,7 @@ export function ChatMessage({
     </div>
   );
 }
+
+// Memoized export - critical for performance since component renders in lists
+export const ChatMessage = memo(ChatMessageComponent);
 

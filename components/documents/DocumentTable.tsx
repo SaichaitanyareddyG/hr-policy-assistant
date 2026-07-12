@@ -1,5 +1,13 @@
+/**
+ * Document Table Component
+ * 
+ * Displays documents in a table with actions
+ * Optimized with React.memo and useCallback
+ */
+
 'use client';
 
+import { memo, useCallback } from 'react';
 import {
   Table,
   TableBody,
@@ -34,7 +42,7 @@ interface DocumentTableProps {
   onReprocess?: (document: PolicyDocumentWithUploader) => void;
 }
 
-export function DocumentTable({
+function DocumentTableComponent({
   documents,
   onView,
   onEdit,
@@ -44,13 +52,13 @@ export function DocumentTable({
   onGenerateEmbeddings,
   onReprocess,
 }: DocumentTableProps) {
-  const formatDate = (dateString: string) => {
+  const formatDate = useCallback((dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
     });
-  };
+  }, []);
 
   return (
     <div className="rounded-md border">
@@ -196,3 +204,6 @@ export function DocumentTable({
     </div>
   );
 }
+
+// Memoized export - prevents re-renders when parent updates
+export const DocumentTable = memo(DocumentTableComponent);
