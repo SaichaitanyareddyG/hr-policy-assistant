@@ -1,0 +1,41 @@
+# Test files and directories
+tests/
+test-results/
+playwright-report/
+playwright/.cache/
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Local development
+.env.test
+.env.*.local
+.env.local.example
+.env.test.example
+
+# Git
+.git/
+.github/
+
+# IDE
+.vscode/
+.idea/
+
+# Build artifacts
+tsconfig.tsbuildinfo
+
+# Scripts
+scripts/
+
+# Demo files
+DEMO_*.md
+STEP*.md
+*_COMPLETE.md
+*_VERIFICATION.md
+*_SUMMARY.md
+*_CHECKLIST.md
+*_TROUBLESHOOTING.md
+*_GUIDE.md
+*_SETUP.md
