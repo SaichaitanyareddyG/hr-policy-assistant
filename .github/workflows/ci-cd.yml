@@ -1,5 +1,5 @@
 # Production CI/CD Pipeline with Best Practices
-# Follows industry standards: separated jobs, parallel execution, fail-fast
+# Follows industry standards: separated jobs, sequential execution, fail-fast
 
 name: CI/CD Pipeline
 
@@ -95,6 +95,7 @@ jobs:
   test-e2e:
     name: E2E Tests (Node ${{ matrix.node-version }})
     runs-on: ubuntu-latest
+    needs: [lint, build]  # Wait for lint and build to complete first
     
     strategy:
       fail-fast: false  # Continue testing other versions even if one fails
@@ -172,7 +173,7 @@ jobs:
   # Job 4: Deploy to Vercel (ONLY after ALL jobs succeed)
   deploy:
     name: Deploy to Production
-    needs: [lint, build, test-e2e]  # Waits for ALL jobs to complete successfully
+    needs: [test-e2e]  # Waits for tests (which wait for lint and build)
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     
@@ -202,27 +203,39 @@ jobs:
 # │   PR/Push   │
 # └──────┬──────┘
 #        │
-#        ├─────────┬──────────┬──────────┐
-#        ▼         ▼          ▼          ▼
-#    ┌──────┐ ┌───────┐ ┌────────┐ ┌────────┐
-#    │ Lint │ │ Build │ │ Test   │ │ Test   │
-#    │      │ │       │ │ (N18)  │ │ (N20)  │
-#    └───┬──┘ └───┬───┘ └────┬───┘ └────┬───┘
-#        │        │          │          │
-#        └────────┴──────────┴──────────┘
-#                      │
-#             ALL MUST PASS ✓
-#                      │
-#                      ▼
-#                ┌──────────┐
-#                │  Deploy  │ (main branch only)
-#                └──────────┘
+#        ├───────────────┐
+#        ▼               ▼
+#    ┌──────┐       ┌───────┐
+#    │ Lint │       │ Build │   (Stage 1: Parallel)
+#    └───┬──┘       └───┬───┘
+#        │              │
+#        └──────┬───────┘
+#               │
+#      BOTH MUST PASS ✓
+#               │
+#        ┌──────┴──────┐
+#        ▼             ▼
+#    ┌────────┐   ┌────────┐
+#    │ Test   │   │ Test   │   (Stage 2: Sequential after Stage 1)
+#    │ (N18)  │   │ (N20)  │
+#    └────┬───┘   └────┬───┘
+#         │           │
+#         └─────┬─────┘
+#               │
+#      TESTS MUST PASS ✓
+#               │
+#               ▼
+#         ┌──────────┐
+#         │  Deploy  │          (Stage 3: Sequential after Stage 2)
+#         └──────────┘          (main branch only)
 #
 # Benefits:
-# - Parallel execution (faster CI/CD)
+# - Sequential execution (safer, predictable order)
+# - Lint + Build run first (parallel with each other)
+# - Tests wait for lint and build to pass
 # - Deploy only after ALL checks pass
 # - No broken code reaches production
 # - Clear separation of concerns
-# - Easy to debug (isolated jobs)
+# - Easy to debug (isolated stages)
 #
 # ============================================================================
