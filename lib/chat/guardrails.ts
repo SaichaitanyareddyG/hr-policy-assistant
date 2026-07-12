@@ -128,8 +128,9 @@ export function createOffTopicResponse(reason?: string) {
  * Check for malicious or injection attempts
  * 
  * Simple keyword-based detection for common attack patterns
+ * Internal function - not exported as it's only used by validateQuestion
  */
-export function detectMaliciousInput(question: string): boolean {
+function detectMaliciousInput(question: string): boolean {
   const maliciousPatterns = [
     /ignore\s+(previous|all|above)\s+instructions?/i,
     /forget\s+(previous|all|your)\s+instructions?/i,
