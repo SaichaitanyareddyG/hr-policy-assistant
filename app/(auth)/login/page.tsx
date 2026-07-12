@@ -16,7 +16,7 @@ function LogoutMessage({ reason }: { reason?: string }) {
     <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg flex items-start gap-3">
       <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
       <div>
-        <p className="text-sm font-medium text-yellow-900">You've been logged out</p>
+        <p className="text-sm font-medium text-yellow-900">You&apos;ve been logged out</p>
         <p className="text-sm text-yellow-700 mt-1">{reason}</p>
       </div>
     </div>
@@ -102,7 +102,7 @@ export default async function LoginPage({
             <LogoutMessage reason={params.reason} />
             <AuthForm type="login" />
             <div className="mt-6 text-center text-sm">
-              <span className="text-gray-600">Don't have an account? </span>
+              <span className="text-gray-600">Don&apos;t have an account? </span>
               <Link href="/register" className="text-blue-600 hover:underline font-medium">
                 Sign up
               </Link>

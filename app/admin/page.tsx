@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { FileText, Users, MessageSquare, AlertCircle } from 'lucide-react';
 import { DashboardCard } from '@/components/admin/dashboard-card';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -78,32 +79,32 @@ export default async function AdminDashboard() {
             <CardDescription>HR Admin Actions</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
-            <a href="/admin/documents/upload" className="block">
+            <Link href="/admin/documents/upload" className="block">
               <div className="p-3 border rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
                 <p className="font-medium text-sm">Upload Policy</p>
                 <p className="text-xs text-gray-500 mt-1">Add new policy PDFs</p>
               </div>
-            </a>
-            <a href="/admin/analytics" className="block">
+            </Link>
+            <Link href="/admin/analytics" className="block">
               <div className="p-3 border rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
                 <p className="font-medium text-sm">View Analytics</p>
                 <p className="text-xs text-gray-500 mt-1">Employee questions and feedback</p>
               </div>
-            </a>
-            <a href="/admin/clarifications" className="block">
+            </Link>
+            <Link href="/admin/clarifications" className="block">
               <div className="p-3 border rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
                 <p className="font-medium text-sm">Review Clarifications</p>
                 <p className="text-xs text-gray-500 mt-1">
                   {analytics?.openClarifications || 0} open requests
                 </p>
               </div>
-            </a>
-            <a href="/admin/employees" className="block">
+            </Link>
+            <Link href="/admin/employees" className="block">
               <div className="p-3 border rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
                 <p className="font-medium text-sm">Manage Employees</p>
                 <p className="text-xs text-gray-500 mt-1">View and edit employee access</p>
               </div>
-            </a>
+            </Link>
           </CardContent>
         </Card>
 
