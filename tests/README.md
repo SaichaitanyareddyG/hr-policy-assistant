@@ -1,7 +1,37 @@
 # E2E Testing Guide
 
 ## Overview
-This project uses Playwright for end-to-end testing to ensure all features work correctly from a user's perspective.
+This project uses Playwright for end-to-end testing with comprehensive scenario coverage including real-world user workflows, integration tests, and performance benchmarks.
+
+## Test Suites
+
+### 📋 Basic Feature Tests
+- **auth.spec.ts** - Authentication (login, register, validation)
+- **employee-chat.spec.ts** - Chat features (messages, guardrails, history)
+- **admin.spec.ts** - Admin dashboard (navigation, documents, users)
+
+### 🎬 Scenario Tests (Real User Workflows)
+- **scenarios.spec.ts** - Complete user journeys:
+  - New employee onboarding
+  - Daily employee usage patterns
+  - Admin content management
+  - Error recovery flows
+  - Edge cases and accessibility
+
+### 🔗 Integration Tests
+- **integration.spec.ts** - Cross-feature workflows:
+  - Question → AI → History → Analytics
+  - Document upload → Processing → Employee access
+  - Clarification request workflow
+  - Access control and permissions
+  - Data persistence
+
+### ⚡ Performance Tests
+- **performance.spec.ts** - Load times and responsiveness:
+  - Page load benchmarks (< 3s goal)
+  - AI response times (< 30s, ideally < 10s)
+  - Search performance
+  - Network efficiency
 
 ## Quick Start
 
@@ -52,7 +82,7 @@ tests/e2e/
 
 ## Test Coverage
 
-### Authentication (`auth.spec.ts`)
+### Authentication (`auth.spec.ts`) - 7 tests
 ✅ Homepage loads successfully  
 ✅ Navigation to login page  
 ✅ Validation errors for empty fields  
@@ -61,7 +91,7 @@ tests/e2e/
 ✅ Successful admin login  
 ✅ Navigation to register page
 
-### Employee Chat (`employee-chat.spec.ts`)
+### Employee Chat (`employee-chat.spec.ts`) - 6 tests
 ✅ Chat interface displays correctly  
 ✅ Send message and receive AI response  
 ✅ Guardrails reject off-topic questions  
@@ -69,7 +99,7 @@ tests/e2e/
 ✅ Clear chat history  
 ✅ Sources displayed when available
 
-### Admin Dashboard (`admin.spec.ts`)
+### Admin Dashboard (`admin.spec.ts`) - 11 tests
 ✅ Dashboard displays correctly  
 ✅ Navigate to analytics page  
 ✅ Navigate to documents page  
@@ -81,6 +111,44 @@ tests/e2e/
 ✅ Document list display  
 ✅ Search documents  
 ✅ View document details
+
+### Real-World Scenarios (`scenarios.spec.ts`) - 20+ tests
+✅ Complete employee onboarding journey  
+✅ Daily usage: Check policies and ask questions  
+✅ Submit clarification requests  
+✅ Search and read policy documents  
+✅ Admin uploads and processes documents  
+✅ Review and approve FAQs  
+✅ Handle clarification requests  
+✅ Monitor system analytics  
+✅ Invite new employees  
+✅ Review audit trail  
+✅ Error recovery (network failures, session expiration)  
+✅ Edge cases (long messages, special characters)  
+✅ Accessibility (keyboard navigation, ARIA labels)
+
+### Integration Tests (`integration.spec.ts`) - 10+ tests
+✅ End-to-end question flow  
+✅ Document upload to employee query  
+✅ Complete clarification workflow  
+✅ Role-based access control  
+✅ Cross-feature search consistency  
+✅ Data persistence across refreshes  
+✅ Session management  
+✅ Real-time updates
+
+### Performance Tests (`performance.spec.ts`) - 12+ tests
+✅ Page load times (< 3s goal)  
+✅ Login performance  
+✅ Chat responsiveness  
+✅ Large data handling  
+✅ AI response times (< 30s)  
+✅ Search performance  
+✅ Memory leak detection  
+✅ Network efficiency  
+✅ Progressive loading
+
+**Total: 70+ comprehensive tests covering all critical paths**
 
 ## Best Practices
 
@@ -188,8 +256,20 @@ If tests fail intermittently:
 - Ensure Supabase is configured correctly
 
 ## Adding New Tests
+Testing Strategy](./TESTING_STRATEGY.md) - Comprehensive best practices guide
+- [Best Practices](https://playwright.dev/docs/best-practices)
+- [API Reference](https://playwright.dev/docs/api/class-playwright)
 
-1. Create test file in `tests/e2e/`
+## Test Strategy
+
+For detailed information about:
+- Test organization and pyramid strategy
+- Best practices and patterns
+- Debugging techniques
+- Performance benchmarks
+- Maintenance guidelines
+
+See **[TESTING_STRATEGY.md](./TESTING_STRATEGY.md)** for the complete guide.
 2. Import helpers from `test-utils.ts`
 3. Use descriptive test names
 4. Follow AAA pattern:
