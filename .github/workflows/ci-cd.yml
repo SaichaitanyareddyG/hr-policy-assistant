@@ -14,6 +14,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Permissions required for Vercel integration
+permissions:
+  actions: read       # Required to list workflow jobs
+  contents: read      # Required to read repository content
+  statuses: write     # Required to send status updates to Vercel
+
 env:
   NODE_VERSION: '20.x'
   
