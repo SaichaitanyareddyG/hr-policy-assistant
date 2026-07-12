@@ -152,6 +152,7 @@ export function AuthForm({ type }: AuthFormProps) {
           value={formData.email}
           onChange={(e) => setFormData({ ...formData, email: e.target.value })}
           required
+          data-testid="auth-email-input"
         />
       </div>
 
@@ -167,6 +168,7 @@ export function AuthForm({ type }: AuthFormProps) {
           }
           required
           minLength={6}
+          data-testid="auth-password-input"
         />
       </div>
 
@@ -192,12 +194,12 @@ export function AuthForm({ type }: AuthFormProps) {
       )}
 
       {error && (
-        <div className="p-3 text-sm text-red-600 bg-red-50 rounded-md">
+        <div className="p-3 text-sm text-red-600 bg-red-50 rounded-md" data-testid="auth-error-message">
           {error}
         </div>
       )}
 
-      <Button type="submit" className="w-full" disabled={loading}>
+      <Button type="submit" className="w-full" disabled={loading} data-testid="auth-submit-button">
         {loading ? 'Please wait...' : type === 'login' ? 'Sign In' : 'Sign Up'}
       </Button>
     </form>

@@ -65,6 +65,7 @@ function EmployeeSidebarComponent() {
       <nav className="flex-1 p-4 space-y-1" aria-label="Main navigation">
         {navigation.map((item) => {
           const isActive = pathname === item.href || pathname?.startsWith(item.href + '/');
+          const testId = `nav-${item.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
           
           return (
             <Link
@@ -72,6 +73,7 @@ function EmployeeSidebarComponent() {
               href={item.href}
               prefetch={true}
               aria-current={isActive ? 'page' : undefined}
+              data-testid={testId}
               className={cn(
                 'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150',
                 isActive

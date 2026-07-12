@@ -1,4 +1,5 @@
 import { Page, expect } from '@playwright/test';
+import { LoginPage } from '../page-objects/LoginPage';
 
 /**
  * Test user credentials
@@ -16,29 +17,23 @@ export const TEST_USERS = {
 };
 
 /**
- * Login helper for tests
+ * Login helper for admin using Page Object Model
+ * @deprecated Use LoginPage directly for better maintainability
  */
 export async function loginAsAdmin(page: Page) {
-  await page.goto('/login');
-  await page.fill('input[type="email"]', TEST_USERS.admin.email);
-  await page.fill('input[type="password"]', TEST_USERS.admin.password);
-  await page.click('button[type="submit"]');
-  
-  // Wait for redirect to admin dashboard
-  await page.waitForURL('/admin', { timeout: 10000 });
+  const loginPage = new LoginPage(page);
+  await loginPage.goto();
+  await loginPage.login(TEST_USERS.admin.email, TEST_USERS.admin.password);
 }
 
 /**
- * Login helper for employee
+ * Login helper for employee using Page Object Model
+ * @deprecated Use LoginPage directly for better maintainability
  */
 export async function loginAsEmployee(page: Page) {
-  await page.goto('/login');
-  await page.fill('input[type="email"]', TEST_USERS.employee.email);
-  await page.fill('input[type="password"]', TEST_USERS.employee.password);
-  await page.click('button[type="submit"]');
-  
-  // Wait for redirect to employee dashboard
-  await page.waitForURL('/employee', { timeout: 10000 });
+  const loginPage = new LoginPage(page);
+  await loginPage.goto();
+  await loginPage.login(TEST_USERS.employee.email, TEST_USERS.employee.password);
 }
 
 /**

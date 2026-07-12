@@ -11,7 +11,12 @@
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:debug": "playwright test --debug",
-    "test:report": "playwright show-report"
+    "test:report": "playwright show-report",
+    "test:auth": "playwright test features/auth",
+    "test:admin": "playwright test features/admin",
+    "test:employee": "playwright test features/employee",
+    "test:features": "playwright test features/",
+    "test:coverage": "playwright test --reporter=html,json,junit && playwright show-report"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

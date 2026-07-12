@@ -102,6 +102,7 @@ function AdminSidebarComponent() {
           const isActive = item.href === '/admin' 
             ? pathname === '/admin'
             : pathname === item.href || pathname?.startsWith(item.href + '/');
+          const testId = `nav-${item.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
           
           return (
             <Link
@@ -109,6 +110,7 @@ function AdminSidebarComponent() {
               href={item.href}
               prefetch={true}
               aria-current={isActive ? 'page' : undefined}
+              data-testid={testId}
               className={cn(
                 'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150',
                 isActive
