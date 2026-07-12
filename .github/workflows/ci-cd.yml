@@ -43,7 +43,7 @@ jobs:
         if: always()
         uses: vercel/repository-dispatch/actions/status@v1
         with:
-          name: Vercel - hr-policy-assistant-pwvx: lint
+          name: 'Vercel - hr-policy-assistant-pwvx: lint'
 
   # Job 2: Build Application
   build:
@@ -76,7 +76,7 @@ jobs:
         if: always()
         uses: vercel/repository-dispatch/actions/status@v1
         with:
-          name: Vercel - hr-policy-assistant-pwvx: build
+          name: 'Vercel - hr-policy-assistant-pwvx: build'
       
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
@@ -137,7 +137,7 @@ jobs:
         if: always()
         uses: vercel/repository-dispatch/actions/status@v1
         with:
-          name: Vercel - hr-policy-assistant-pwvx: test-e2e
+          name: 'Vercel - hr-policy-assistant-pwvx: test-e2e'
       
       - name: Upload test results
         if: always()
