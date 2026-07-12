@@ -358,9 +358,12 @@ Built with:
 - **[Demo Setup](docs/DEMO_SETUP.md)** - Demo mode configuration
 
 ### Testing Docs
-- **[Testing Guide (New)](TESTING_GUIDE_NEW.md)** - Quick testing reference
-- **[Playwright Best Practices](PLAYWRIGHT_BEST_PRACTICES.md)** - Detailed patterns
-- **[Test Suite Verification](TEST_SUITE_VERIFICATION.md)** - Complete test inventory🛤️ Roadmap
+- **[Playwright Best Practices](docs/PLAYWRIGHT_BEST_PRACTICES.md)** - Detailed patterns
+- **[Setup & User Fix Guide](docs/SETUP_AND_USER_FIX.md)** - Setup instructions & user deletion
+
+---
+
+## 🛤️ Roadmap
 
 ### ✅ Phase 1 & 2 Complete
 - Authentication & RBAC
