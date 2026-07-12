@@ -84,6 +84,105 @@ Employees spend hours searching through:
 
 ## 📊 Architecture
 
+### System Architecture Diagram
+
+```mermaid
+graph TB
+    subgraph "Frontend - Next.js 15"
+        UI[User Interface]
+        Employee[Employee Portal<br/>Chat, Policies, Help]
+        DeptAdmin[Dept Admin<br/>Documents, Users]
+        OrgAdmin[Org Admin Dashboard<br/>Full Control, Security, Analytics]
+    end
+
+    subgraph "Application Layer"
+        ServerActions[Server Actions<br/>Form Handlers]
+        ServerComp[Server Components<br/>SSR Pages]
+        API[API Routes<br/>Chat, Documents]
+        Middleware[Middleware<br/>Auth + RLS Check]
+    end
+
+    subgraph "Business Logic"
+        AuthLogic[Auth & Permissions<br/>Role-based Access]
+        ChatLogic[Chat System<br/>History + Context]
+        DocLogic[Document Processing<br/>Chunking + Embeddings]
+        RAG[RAG Retrieval<br/>Semantic Search]
+        Analytics[Analytics Engine<br/>Usage Tracking]
+        Audit[Audit Logger<br/>Security Events]
+    end
+
+    subgraph "Supabase Platform"
+        Auth[Supabase Auth<br/>Email/Password]
+        PG[(PostgreSQL<br/>+ pgvector<br/>+ RLS)]
+        Storage[Private Storage<br/>policy-documents<br/>Signed URLs Only]
+    end
+
+    subgraph "AI Services"
+        Gemini[Google Gemini 1.5 Flash<br/>Chat Completions]
+        Embeddings[text-embedding-004<br/>768-dim Vectors]
+        Guardrails[Topic Classification<br/>HR Policy Filter]
+    end
+
+    subgraph "Data Flow"
+        Upload[Document Upload] --> Process[Extract Text<br/>Split Chunks]
+        Process --> Generate[Generate Embeddings]
+        Generate --> Store[(Store in DB<br/>+ Vector Index)]
+        
+        Query[Employee Question] --> Check[Check FAQs First]
+        Check --> |No Match| Search[Semantic Search<br/>Top 5 Chunks]
+        Search --> Filter[Audience Filter<br/>Department/Location]
+        Filter --> LLM[Send to Gemini<br/>with Context]
+        LLM --> Response[AI Response<br/>with Sources]
+    end
+
+    UI --> Employee
+    UI --> DeptAdmin
+    UI --> OrgAdmin
+    
+    Employee --> ServerActions
+    DeptAdmin --> ServerActions
+    OrgAdmin --> ServerActions
+    
+    ServerActions --> Middleware
+    ServerComp --> Middleware
+    API --> Middleware
+    
+    Middleware --> Auth
+    Middleware --> AuthLogic
+    
+    ServerActions --> ChatLogic
+    ServerActions --> DocLogic
+    ServerActions --> Analytics
+    
+    ChatLogic --> RAG
+    DocLogic --> Storage
+    RAG --> PG
+    
+    ChatLogic --> Gemini
+    DocLogic --> Embeddings
+    RAG --> Guardrails
+    
+    AuthLogic --> PG
+    Analytics --> PG
+    Audit --> PG
+    
+    Storage --> PG
+    
+    classDef frontend fill:#e1f5ff,stroke:#0288d1,stroke-width:2px
+    classDef app fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef logic fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef supabase fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
+    classDef ai fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+    
+    class UI,Employee,DeptAdmin,OrgAdmin frontend
+    class ServerActions,ServerComp,API,Middleware app
+    class AuthLogic,ChatLogic,DocLogic,RAG,Analytics,Audit logic
+    class Auth,PG,Storage supabase
+    class Gemini,Embeddings,Guardrails ai
+```
+
+### Simplified Architecture
+
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                      User Interface                         │
@@ -118,6 +217,75 @@ Employees spend hours searching through:
             │  (LLM + Embed)  │
             └─────────────────┘
 ```
+
+### Data Flow
+
+**Document Upload → AI Answers:**
+1. Admin uploads PDF
+2. System extracts text and creates chunks
+3. Generate vector embeddings (768-dim)
+4. Store chunks + embeddings in PostgreSQL
+5. Employee asks question
+6. Check HR-approved FAQs first
+7. Semantic search finds relevant chunks
+8. Filter by audience (department/location)
+9. Send top 5 chunks to Gemini as context
+10. Return AI answer with source citations
+
+---
+
+## 🎬 Demo Videos
+
+Watch PolicyPal AI in action! We use Playwright to capture real user workflows.
+
+### Available Demo Videos
+
+#### 🔐 Authentication & Access Control
+- Employee login and dashboard navigation
+- Admin login and role-based access
+- Invite-based onboarding flow
+
+#### 💬 Employee Experience  
+- Asking HR policy questions
+- Viewing chat history
+- Browsing policy documents
+- Requesting clarifications from HR
+
+#### 👥 Admin Features
+- Uploading and processing documents
+- Managing users and invitations
+- Viewing analytics and insights
+- Handling employee clarifications
+- Reviewing security audit logs
+
+### Generating Demo Videos
+
+Videos are automatically recorded during E2E tests:
+
+```bash
+# Record auth flow demos (login, navigation)
+npm run test:demo
+
+# Record all feature demos (full workflows)
+npm run test:demo:all
+
+# Videos saved to: test-results/*/video.webm
+```
+
+**Configuration:**
+- Resolution: 1280x720 (HD)
+- Format: WebM
+- Location: `test-results/[test-name]/video.webm`
+- Recording: Set `RECORD_VIDEO=true` environment variable
+
+### Using Demo Videos
+
+1. **In Documentation:** Embed in README or docs
+2. **In Presentations:** Show actual app workflows
+3. **For Testing:** Visual regression testing
+4. **For Onboarding:** New team member training
+
+**Note:** Videos are gitignored to keep repo size small. Generate fresh demos as needed.
 
 ---
 

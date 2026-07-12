@@ -16,7 +16,9 @@
     "test:admin": "playwright test features/admin",
     "test:employee": "playwright test features/employee",
     "test:features": "playwright test features/",
-    "test:coverage": "playwright test --reporter=html,json,junit && playwright show-report"
+    "test:coverage": "playwright test --reporter=html,json,junit && playwright show-report",
+    "test:demo": "RECORD_VIDEO=true playwright test features/auth.feature.spec.ts --project=chromium --reporter=list",
+    "test:demo:all": "RECORD_VIDEO=true playwright test features/ --project=chromium --reporter=html,list"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

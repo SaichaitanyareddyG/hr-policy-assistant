@@ -38,8 +38,19 @@ export default defineConfig({
     /* Screenshots on failure */
     screenshot: 'only-on-failure',
     
-    /* Video on failure */
-    video: 'retain-on-failure',
+    /* Video recording:
+     * - 'retain-on-failure': Only failed tests (default)
+     * - 'on': All tests (use RECORD_VIDEO=true for demo videos)
+     */
+    video: process.env.RECORD_VIDEO === 'true' ? 'on' : 'retain-on-failure',
+    
+    /* Video settings for demo recordings */
+    ...(process.env.RECORD_VIDEO === 'true' && {
+      video: {
+        mode: 'on',
+        size: { width: 1280, height: 720 },
+      },
+    }),
   },
 
   /* Configure projects for major browsers */
